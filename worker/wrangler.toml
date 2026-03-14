@@ -1,0 +1,8 @@
+name = "fci-canvass"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fci-canvass-db"
+database_id = "3d7214e5-4d50-4e36-abba-7d7cfefe9ff3"
