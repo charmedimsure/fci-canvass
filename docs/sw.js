@@ -30,11 +30,14 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Always network-first for external APIs and CDNs — never cache these
+  // Always network-first for external APIs — never cache these
   if (url.hostname.includes('tile.openstreetmap') ||
       url.hostname.includes('nominatim') ||
       url.hostname.includes('cdnjs') ||
-      url.hostname.includes('unpkg')) {
+      url.hostname.includes('unpkg') ||
+      url.hostname.includes('workers.dev') ||
+      url.hostname.includes('cloudflare') ||
+      url.pathname.startsWith('/api/')) {
     event.respondWith(fetch(event.request));
     return;
   }
