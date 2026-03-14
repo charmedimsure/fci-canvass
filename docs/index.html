@@ -1990,7 +1990,7 @@ async function selectArea(btn){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
-      if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase() + ' CITY';
+      if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
