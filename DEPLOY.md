@@ -1,79 +1,32 @@
-# FCI Canvass — Deployment Guide
-
-**Fairfield County Indivisible Canvassing Tool**
-
-This app installs on any phone as a home screen app (no app store needed).
-All voter data stays on-device — nothing is sent to any server.
-
----
-
-## Quickest: Deploy with Netlify Drop (2 minutes, free)
-
-1. Go to **https://app.netlify.com/drop**
-2. Drag the entire `fci-canvass` folder onto the page
-3. Netlify gives you a live HTTPS URL immediately (e.g. `https://random-name-123.netlify.app`)
-4. Share that URL with your volunteers
-
-**To set a custom URL like `https://fci-canvass.netlify.app`:**
-- Create a free Netlify account
-- Go to Site Settings → General → Change site name
-
----
-
-## Option 2: GitHub Pages (free, permanent, your own URL)
-
-1. Create a free account at **https://github.com**
-2. Click **New Repository** → name it `fci-canvass` → Public → Create
-3. Click **uploading an existing file** → drag all files in this folder
-4. Commit the files
-5. Go to **Settings → Pages → Source: main branch, / (root) → Save**
-6. Your URL will be `https://YOUR-USERNAME.github.io/fci-canvass`
-
----
-
-## How Volunteers Install It on Their Phone
-
-### Android (Chrome)
-1. Open the URL in Chrome
-2. Tap the **⋮ menu → Add to Home Screen**
-3. Tap **Add** — the FCI Canvass icon appears on their home screen
-4. Chrome may also show an automatic "Install App" banner at the bottom
-
-### iPhone / iPad (Safari)
-1. Open the URL in **Safari** (must be Safari, not Chrome)
-2. Tap the **Share button** (box with arrow at bottom)
-3. Scroll down → **Add to Home Screen**
-4. Tap **Add** — icon appears on home screen
-
-### After Installing
-- The app works **fully offline** after first load
-- All data is saved locally on the device
-- Map tiles need internet, but all canvassing/contact features work without it
-
----
-
-## Files in this Package
-
-| File | Purpose |
-|------|---------|
-| `index.html` | The entire app (self-contained) |
-| `manifest.json` | PWA metadata for phone installation |
-| `sw.js` | Service worker — enables offline use |
-| `icon-192.png` | App icon (Android home screen) |
-| `icon-512.png` | App icon (splash screen / iOS) |
-
----
-
-## Updating the App
-
-When you upload a new version of `index.html`, update the cache version in `sw.js`:
-
-```js
-const CACHE = 'fci-canvass-v2';  // increment this number
-```
-
-This forces volunteers' phones to download the new version on next open.
-
----
-
-*Fairfield County Indivisible · fairfieldcountyindivisible.org*
+FCI FieldMap v4 — Deploy Guide
+Files
+index.html  — the entire app (self-contained, ~14 MB with voter data)
+manifest.json — PWA manifest
+sw.js         — service worker for offline caching
+icon-192.png / icon-512.png — home screen icons
+Hosting (any static host works)
+Upload all files to the same folder on your web server / Netlify / GitHub Pages
+Serve over HTTPS (required for PWA install + camera access)
+First load caches everything via service worker — works offline after that
+Install as PWA
+iOS Safari: tap Share → "Add to Home Screen"
+Android Chrome: tap ⋮ menu → "Add to Home Screen" / "Install App"
+Admin Setup
+Open the app → tap "Admin / Candidate" → "Admin Login"
+First time: enter password `admin` (no email required)
+Once in → go to Admin Panel → "Admin Accounts" → add your email + new password
+The default `admin` password is disabled once real accounts are added
+Candidate Setup
+Create a campaign from the Admin Panel or directly via "Candidate Login" → "New Campaign".
+What's New (v4 — March 2026)
+📰 Lit Drop mode (wizard + candidate campaign type)
+🗺 Google Maps walking route export per route
+🔐 Multi-admin system with email + password
+📬 Voter history sidebar on label print screen
+🏘 Street landmarks in neighborhood picker
+⚠️ Small routes now show (SMALL badge) instead of being dropped to mail
+✅ Presidential-election-only voter filter
+✅ Age range filter for candidates
+✅ OH-73 / OH-69 / SD-20 / CD-12 always visible for independents
+✅ "Change" canvass type button fixed
+✅ Walk sheet + label print open in proper popup window
