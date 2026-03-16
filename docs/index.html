@@ -381,9 +381,9 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .mode-btn.selected { border-color:var(--accent); background:var(--accent-bg); color:var(--accent); }
   /* Route picker overlay */
   /* Mail filter overlay */
-  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:3500; display:none; align-items:center; justify-content:center; padding:16px; }
+  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:3500; display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
   #mail-filter-overlay.open { display:flex; }
-  .mf-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; padding:24px; }
+  .mf-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:480px; max-height:85vh; overflow-y:scroll; -webkit-overflow-scrolling:touch; padding:24px; }
   .mf-title { font-size:17px; font-weight:700; margin-bottom:4px; }
   .mf-sub { font-size:12px; color:var(--text-muted); margin-bottom:20px; }
   .mf-section { margin-bottom:18px; }
@@ -2878,6 +2878,7 @@ function bindRows(root){
     el.parentNode.replaceChild(fresh, el);
     // IDs are now MD5 hex strings — use as string, not number
     fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});
+    fresh.addEventListener('touchend',(e)=>{e.preventDefault();const id=fresh.dataset.id;if(id)openModal(id);});
   });
 }
 
@@ -3637,7 +3638,7 @@ function removeVoterFromLists(v){
 
 document.getElementById('m-save').addEventListener('click',()=>{
   if(mId===null)return;
-  const v=voters.find(x=>x.id===mId);
+  const v=voters.find(x=>String(x.id)===String(mId));
   const reason=document.getElementById('m-reason').value;
   const isRestriction=RESTRICTION_REASONS.has(reason);
   const isRemove=REMOVE_REASONS.has(reason);
@@ -4362,7 +4363,9 @@ async function runMailCanvass(){
     }
     _postRenderContactState = null;
   }
+  console.log('[mail] base voters:', base.length, 'mailFilterAge:', mailFilterAge, 'mailFilterPresOnly:', mailFilterPresOnly, 'mailFilterLocs:', mailFilterLocs, 'mailFilterDistrict:', mailFilterDistrict, 'mailSortDonors:', mailSortDonors);
   let filtered = applyMailFiltersToVoters(base);
+  console.log('[mail] filtered voters:', filtered.length);
   if(!filtered.length){ toast('No voters match those filters — try broadening your criteria.',true); return; }
   filtered.forEach(v=>{ v.assignment='mail'; });
   voters = filtered;
@@ -4788,6 +4791,13 @@ async function generateRoutes(){
   }
   if(!canvassFor && canvassMode !== 'litdrop' && canvassMode !== 'mail'){ toast('Select a race first', true); return; }
   if(canvassMode === 'litdrop') canvassFor = canvassFor || 'Literature Drop';
+
+  // Mail mode — open filter directly, runMailCanvass handles its own fetching
+  if(canvassMode === 'mail'){
+    openMailFilter();
+    return;
+  }
+
   // If running outside a campaign (admin/independent), fetch voters on demand
   if(!ALL_VOTERS_RAW.length){
     // Build params from current wizard state
@@ -4850,11 +4860,7 @@ async function generateRoutes(){
     _postRenderContactState = null;
   }
 
-  // Mail mode is handled directly from pickMode — this shouldn't be reached
-  if(canvassMode === 'mail'){
-    openMailFilter();
-    return;
-  }
+  // (mail mode already handled above)
 
   await geocodeAll(voters);
   const res=clusterVoters(voters);
