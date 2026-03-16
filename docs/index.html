@@ -411,7 +411,8 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   /* Focused route overlay — full screen, same pattern as route-picker */
   #focused-route-overlay { position:fixed; inset:0; background:var(--bg); z-index:2500; display:none; flex-direction:column; overflow:hidden; }
   #focused-route-overlay.open { display:flex; }
-  .fro-header { display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+  .fro-header { display:flex; align-items:center; gap:8px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
+  .fro-btn-row { display:flex; gap:6px; flex-wrap:wrap; width:100%; margin-top:4px; }
   .fro-title { font-size:15px; font-weight:700; flex:1; }
   .fro-back { background:none; border:1px solid var(--border); color:var(--text-muted); border-radius:6px; padding:7px 14px; font-size:12px; cursor:pointer; font-family:inherit; }
   .fro-back:hover { border-color:var(--accent); color:var(--accent); }
@@ -984,7 +985,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
           <div class="area-group" style="margin-bottom:10px;">
             <button class="area-btn" data-area-field="municipality" data-area-value="Lancaster City" data-area-label="Lancaster">Lancaster</button>
             <button class="area-btn" data-area-field="municipality" data-area-value="Pickerington City" data-area-label="Pickerington">Pickerington</button>
-            <button class="area-btn" data-area-field="municipality" data-area-value="Canal Winchester Cty" data-area-label="Canal Winchester">Canal Winchester</button>
+            <button class="area-btn" data-area-field="village" data-area-value="Canal Winchester" data-area-label="Canal Winchester">Canal Winchester</button>
             <button class="area-btn" data-area-field="municipality" data-area-value="Columbus City" data-area-label="Columbus (Fairfield Co.)">Columbus portion</button>
             <button class="area-btn" data-area-field="municipality" data-area-value="Reynoldsburg City" data-area-label="Reynoldsburg">Reynoldsburg</button>
           </div>
@@ -1708,7 +1709,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 // Set these after deploying your Worker (see SETUP.md)
 // ══════════════════════════════════════════════════════════════════
 const FCI_API_URL = 'https://fci-canvass.fci-canvass.workers.dev';
-const FCI_API_KEY = 'ohiofci#canvass#7312';
+const FCI_API_KEY = 'ohiofcicanvass7312';
 
 async function apiGet(path, params={}){
   const url = new URL(FCI_API_URL + path);
@@ -1764,9 +1765,25 @@ const FIELD_LOOKUP={"cong":{"0":"12TH CONGRESSIONAL"},"sen":{"0":"OHIO STATE SEN
 let ALL_VOTERS_RAW = [];   // populated by loadVotersFromAPI()
 
 function voterFromAPI(v){
-  // v is a fully-decoded voter object from D1
+  // v comes from D1 — decode compressed field names to what the app expects
+  // vns is stored as JSON string array of [firstName, lastName] pairs
+  let vnsArr = [];
+  try { vnsArr = typeof v.vns === 'string' ? JSON.parse(v.vns) : (v.vns || []); } catch(e){}
+
+  // Build voters array from vns: [{name:'First Last', ...}]
+  const votersArr = vnsArr.map(pair =>
+    Array.isArray(pair) ? { name: pair[0] + ' ' + pair[1] } : { name: String(pair) }
+  );
+
   return {
     ...v,
+    // Decode compressed field names
+    name:        v.name  || v.n  || '',
+    address:     v.address || v.a || '',
+    party:       v.party || v.pty || '',
+    ages:        v.ages  || '',
+    voters:      votersArr.length ? votersArr : (v.voters || []),
+    // District fields already decoded by migration
     score: v.score || null,
     scoreOverride: false,
     contactStatus: 'pending',
@@ -2180,6 +2197,7 @@ function resetToStep(which){
     wizHide('step-area'); wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
     areaField=''; areaValue=''; areaLabel=''; neighborhoodPrec=''; needsNeighborhood=false;
     canvassFor=''; filterField=''; filterDistrict=''; canvassMode='';
+    ALL_VOTERS_RAW = []; _currentAreaVoters = null;
     document.querySelectorAll('.area-btn,.race-btn,.nbhd-btn,.mode-btn').forEach(b=>b.classList.remove('selected'));
   } else if(which==='area'){
     reopen('step-area','chip-area','change-area');
@@ -2599,7 +2617,7 @@ function haversine(la1,lo1,la2,lo2){
 }
 
 function adaptiveThreshold(pts){
-  if(pts.length<2) return 0.2;
+  if(pts.length<2) return 0.15;
   const sample=pts.length>100?pts.filter((_,i)=>i%Math.floor(pts.length/100)===0):pts;
   const dists=sample.map(p=>{
     let min=Infinity;
@@ -2607,11 +2625,11 @@ function adaptiveThreshold(pts){
     return min===Infinity?0:min;
   }).filter(d=>d>0).sort((a,b)=>a-b);
   const median=dists[Math.floor(dists.length/2)]||0.12;
-  return Math.max(0.08, Math.min(0.6, median*3));
+  return Math.max(0.05, Math.min(0.25, median*2));
 }
 
 function clusterVoters(vl){
-  const ROUTE_TARGET=20;
+  const ROUTE_TARGET=15;
   const valid=vl.filter(v=>v.lat&&v.lon);
   const noCoord=vl.filter(v=>!v.lat||!v.lon);
 
@@ -3166,18 +3184,39 @@ function _scanFrame() {
   }
 }
 
-function _handleScannedWalkSheet(qrData) {
+async function _handleScannedWalkSheet(qrData) {
   // qrData = "fci-ws:<sheetId>:<comma-separated voter IDs>"
   const parts = qrData.split(':');
   if (parts.length < 3) { toast('Could not read walk sheet QR', true); return; }
   const idStr = parts[2];
-  const ids = idStr.split(',').map(Number).filter(Boolean);
+  // IDs are now MD5 hex strings — keep as strings, not numbers
+  const ids = idStr.split(',').map(s => s.trim()).filter(Boolean);
 
-  const ALL = ALL_VOTERS_RAW ? loadEmbeddedVoters() : voters;
-  const sheetVoters = ids.map(id => {
-    // Check in current voters first, then ALL
-    return voters.find(v => v.id === id) || ALL.find(v => v.id === id) || null;
-  }).filter(Boolean);
+  // First check in already-loaded voters
+  let sheetVoters = ids.map(id =>
+    voters.find(v => String(v.id) === id) ||
+    (ALL_VOTERS_RAW || []).find(v => String(v.id) === id) || null
+  ).filter(Boolean);
+
+  // If not found locally, fetch from API by ID
+  if (sheetVoters.length < ids.length) {
+    showLoadingOverlay('Loading voter data…');
+    try {
+      const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
+      // Fetch all voters and match by id
+      const r = await apiGet('/api/voters', {});
+      const apiVoters = (r.voters || []).map(voterFromAPI);
+      ALL_VOTERS_RAW = apiVoters;
+      sheetVoters = ids.map(id =>
+        voters.find(v => String(v.id) === id) ||
+        apiVoters.find(v => String(v.id) === id) || null
+      ).filter(Boolean);
+    } catch(e) {
+      toast('⚠️ Could not load voter data: ' + e.message, true);
+    } finally {
+      hideLoadingOverlay();
+    }
+  }
 
   if (!sheetVoters.length) { toast('No matching voters found for this sheet', true); return; }
 
@@ -4283,7 +4322,31 @@ function applyMailFiltersToVoters(vlist){
   });
 }
 
-function runMailCanvass(){
+async function runMailCanvass(){
+  // If no voters loaded yet, fetch from API based on current wizard state
+  if(!ALL_VOTERS_RAW || !ALL_VOTERS_RAW.length){
+    showLoadingOverlay('Loading voter data…');
+    try {
+      const fetchParams = {};
+      if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
+      else if(areaField === 'st_house') fetchParams.st_house = areaValue;
+      else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
+      else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
+      else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
+      else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
+      if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
+      if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
+      if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
+      const _r = await apiGet('/api/voters', fetchParams);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI);
+    } catch(e) {
+      hideLoadingOverlay();
+      toast('⚠️ Could not load voter data: ' + e.message, true);
+      return;
+    }
+    hideLoadingOverlay();
+  }
+
   // Start from full dataset — mail skips the wizard
   let base = ALL_VOTERS_RAW.map(v=>({...v,
     contactStatus:'pending',contactReason:'',yardSign:false,oppYard:false,notes:'',
@@ -4468,6 +4531,15 @@ function mqConfirm(){
 }
 
 function pickMode(mode){
+  // Clear stale voter data and downstream state when switching modes
+  ALL_VOTERS_RAW = [];
+  _currentAreaVoters = null;
+  areaField=''; areaValue=''; areaLabel=''; neighborhoodPrec=''; needsNeighborhood=false;
+  canvassFor=''; filterField=''; filterDistrict='';
+  document.querySelectorAll('.area-btn,.race-btn,.nbhd-btn').forEach(b=>b.classList.remove('selected'));
+  // Reset area/race/nbhd steps
+  wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
+
   canvassMode = mode;
   document.getElementById('mode-door').classList.toggle('selected', mode === 'door');
   document.getElementById('mode-mail').classList.toggle('selected', mode === 'mail');
@@ -4478,9 +4550,10 @@ function pickMode(mode){
     document.getElementById('chip-mode').textContent = '📰 Lit Drop';
     document.getElementById('change-mode').style.display = 'inline';
     document.getElementById('generate-btn').textContent = 'Generate Lit Drop Route →';
-    // Lit drop: target all voters, ask area then generate
     filterField = ''; filterDistrict = ''; canvassFor = 'Literature Drop';
+    // Show and reset the area step
     document.getElementById('step-area-wrapper').style.display = 'block';
+    wizOpen('step-area');
     updateGenerateBtn();
     return;
   }
@@ -4500,7 +4573,9 @@ function pickMode(mode){
   document.getElementById('chip-mode').textContent = '🚶 Door to Door';
   document.getElementById('change-mode').style.display = 'inline';
   document.getElementById('generate-btn').textContent = 'Generate Routes →';
+  // Show and reset the area step
   document.getElementById('step-area-wrapper').style.display = 'block';
+  wizOpen('step-area');
   updateGenerateBtn();
 }
 
@@ -4581,10 +4656,12 @@ function showFocusedRoute(idx){
       <span style="color:var(--strong)">${strong}S</span> ·
       <span style="color:var(--leans)">${leans}L</span></div>
     <span id="focused-contacted" style="font-size:12px;color:var(--contacted);font-weight:600;">${contacted}/${cl.length} contacted</span>
-    <button onclick="openWalkSheetPrint()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🖨 Walk Sheet</button>
-    <button onclick="openScanOverlay()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">📷 Scan Sheet</button>
-    <button onclick="openMapsRoute()" style="background:#1a73e8;border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🗺 Maps Route</button>
-    <button class="fro-back" onclick="exitFocusedRoute()">← All Routes</button>`;
+    <div class="fro-btn-row">
+      <button onclick="openWalkSheetPrint()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🖨 Walk Sheet</button>
+      <button onclick="openScanOverlay()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">📷 Scan Sheet</button>
+      <button onclick="openMapsChoice()" style="background:#1a73e8;border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🗺 Maps Route</button>
+      <button class="fro-back" onclick="exitFocusedRoute()">← All Routes</button>
+    </div>`;
 
   // Build voter rows
   const body = document.getElementById('fro-body');
@@ -4633,37 +4710,84 @@ function exitFocusedRoute(){
   }
 }
 
-function openMapsRoute(){
+function openMapsRoute(appChoice){
   // Build ordered waypoints from the current focused cluster
   if(selectedRoute < 0 || !walkClusters[selectedRoute]) return;
   const cl = walkClusters[selectedRoute].filter(v => v.lat && v.lon);
   if(!cl.length){ toast('No geocoded addresses in this route', true); return; }
 
-  // Use Google Maps directions URL with up to 10 waypoints (Maps limit)
-  // Origin = first address, Destination = last address, waypoints = middle
   const enc = a => encodeURIComponent(a);
   const addrs = cl.map(v => v.address || `${v.lat},${v.lon}`);
+  const coords = cl.map(v => `${v.lat},${v.lon}`);
 
-  if(addrs.length === 1){
-    // Single stop — just open in maps
-    const url = `https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`;
+  // Detect iOS if no explicit choice given
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const useApple = appChoice === 'apple' || (appChoice !== 'google' && isIOS);
+
+  if(useApple){
+    // Apple Maps — supports up to 9 waypoints via daddr chaining
+    if(addrs.length === 1){
+      window.open(`https://maps.apple.com/?q=${enc(addrs[0])}&dirflg=w`, '_blank');
+    } else {
+      const origin = enc(addrs[0]);
+      const dest   = enc(addrs[addrs.length - 1]);
+      // Apple Maps waypoints via comma-separated daddr (limited support — use coords)
+      const url = `https://maps.apple.com/?saddr=${origin}&daddr=${dest}&dirflg=w`;
+      window.open(url, '_blank');
+    }
+    toast(`Opening ${cl.length} stops in Apple Maps 🍎`);
+  } else {
+    // Google Maps walking directions
+    if(addrs.length === 1){
+      window.open(`https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`, '_blank');
+      return;
+    }
+    const origin = enc(addrs[0]);
+    const dest   = enc(addrs[addrs.length - 1]);
+    const wpts   = addrs.slice(1, -1).slice(0, 8).map(enc).join('|');
+    const url = `https://www.google.com/maps/dir/?api=1`
+      + `&origin=${origin}`
+      + `&destination=${dest}`
+      + (wpts ? `&waypoints=${wpts}` : '')
+      + `&travelmode=walking`;
     window.open(url, '_blank');
-    return;
+    toast(`Opening ${cl.length} stops in Google Maps 🗺`);
   }
+}
 
-  // Google Maps walking directions: origin → waypoints → destination
-  const origin = enc(addrs[0]);
-  const dest   = enc(addrs[addrs.length - 1]);
-  // Max 8 waypoints in the URL (10 total stops)
-  const wpts   = addrs.slice(1, -1).slice(0, 8).map(enc).join('|');
-  const url = `https://www.google.com/maps/dir/?api=1`
-    + `&origin=${origin}`
-    + `&destination=${dest}`
-    + (wpts ? `&waypoints=${wpts}` : '')
-    + `&travelmode=walking`;
+function openMapsChoice(){
+  // Show a quick picker — Google or Apple Maps
+  if(selectedRoute < 0 || !walkClusters[selectedRoute]) return;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-  window.open(url, '_blank');
-  toast(`Opening ${cl.length} stops in Google Maps 🗺`);
+  // On iOS show both options; on Android/desktop just open Google Maps directly
+  if(!isIOS){ openMapsRoute('google'); return; }
+
+  // iOS: show a small overlay to pick
+  let pick = document.getElementById('maps-pick-overlay');
+  if(!pick){
+    pick = document.createElement('div');
+    pick.id = 'maps-pick-overlay';
+    pick.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;';
+    pick.innerHTML = `
+      <div style="background:var(--surface);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,.4);">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;text-align:center;">Open route in…</div>
+        <button onclick="openMapsRoute('apple');document.getElementById('maps-pick-overlay').style.display='none';"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:14px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+          🍎 <span>Apple Maps</span>
+        </button>
+        <button onclick="openMapsRoute('google');document.getElementById('maps-pick-overlay').style.display='none';"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:14px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+          🗺 <span>Google Maps</span>
+        </button>
+        <button onclick="document.getElementById('maps-pick-overlay').style.display='none';"
+          style="width:100%;background:none;border:none;color:var(--text-muted);padding:10px;font-size:13px;cursor:pointer;">
+          Cancel
+        </button>
+      </div>`;
+    document.body.appendChild(pick);
+  }
+  pick.style.display = 'flex';
 }
 
 async function generateRoutes(){
@@ -4679,13 +4803,31 @@ async function generateRoutes(){
   if(canvassMode === 'litdrop') canvassFor = canvassFor || 'Literature Drop';
   // If running outside a campaign (admin/independent), fetch voters on demand
   if(!ALL_VOTERS_RAW.length){
-    voters = await (async()=>{
-      const fetched = await loadVotersFromAPI();
-      return applyFilters(fetched.map(v=>({...v,
-        contactStatus:'pending',contactReason:'',yardSign:false,oppYard:false,notes:'',
-        assignment:null,clusterNum:null,score:null,scoreOverride:false
-      })));
-    })();
+    // Build params from current wizard state
+    const _genParams = {};
+    if(areaField === 'municipality') _genParams.municipality = areaValue.toUpperCase();
+    else if(areaField === 'st_house') _genParams.st_house = areaValue;
+    else if(areaField === 'st_senate') _genParams.st_senate = areaValue;
+    else if(areaField === 'cong_dist') _genParams.cong_dist = areaValue;
+    else if(areaField === 'township') _genParams.township = areaValue.toUpperCase();
+    else if(areaField === 'village') _genParams.village = areaValue.toUpperCase();
+    if(filterField === 'stHouse')  _genParams.st_house  = filterDistrict;
+    if(filterField === 'stSenate') _genParams.st_senate = filterDistrict;
+    if(filterField === 'congDist') _genParams.cong_dist = filterDistrict;
+    showLoadingOverlay('Loading voter data…');
+    try {
+      const _r = await apiGet('/api/voters', _genParams);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI);
+    } catch(e) {
+      hideLoadingOverlay();
+      toast('⚠️ Could not load voter data: ' + e.message, true);
+      return;
+    }
+    hideLoadingOverlay();
+    voters = applyFilters(ALL_VOTERS_RAW.map(v=>({...v,
+      contactStatus:'pending',contactReason:'',yardSign:false,oppYard:false,notes:'',
+      assignment:null,clusterNum:null,score:null,scoreOverride:false
+    })));
   } else {
     voters = applyFilters(ALL_VOTERS_RAW.map(v=>({...v,
       contactStatus:'pending',contactReason:'',yardSign:false,oppYard:false,notes:'',
@@ -5527,7 +5669,7 @@ async function adminLogin(){
   err.style.display='none';
   const admins = loadAdmins();
   // Legacy single-pw fallback
-  const LEGACY_HASH = '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918';
+  const LEGACY_HASH = '8fb32b8bb42ea24b9605b3ecb10f3f43172dfe4f86c58acc69f85749926b60fd';
   if(!pw){ err.textContent='Enter your password'; err.style.display=''; return; }
   const h = await hashPin(pw);
   if(admins.length===0){
