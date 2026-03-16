@@ -2876,8 +2876,7 @@ function bindRows(root){
     // Remove old listener by cloning, then re-attach
     const fresh = el.cloneNode(true);
     el.parentNode.replaceChild(fresh, el);
-    fresh.addEventListener('click',()=>{const id=parseInt(fresh.dataset.id);if(!isNaN(id))openModal(id);});
-  });
+fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});  });
 }
 
 // ── MODAL ──────────────────────────────────────────────────
@@ -3416,7 +3415,7 @@ function openModal(id){
     scriptCard.style.display = 'none';
   }
 
-  const v=voters.find(x=>x.id===id); if(!v)return;
+const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
   mId=id; mScore=v.score; mContact=v.contactStatus; mYard=v.yardSign; mOppYard=v.oppYard||false;
   document.getElementById('m-name').textContent=v.name;
   document.getElementById('m-addr').textContent=v.address;
