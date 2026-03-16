@@ -1,5 +1,5 @@
 // FCI Canvass — Service Worker v4
-const CACHE = 'fci-canvass-v4';
+const CACHE = 'fci-canvass-v5';
 
 const APP_SHELL = [
   './',
@@ -30,8 +30,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Always network-first for external APIs — never cache these
-  if (url.hostname.includes('tile.openstreetmap') ||
+  // Always network-first for:
+  // - non-GET requests (POST, DELETE etc — never cache these)
+  // - external APIs and CDNs
+  if (event.request.method !== 'GET' ||
+      url.hostname.includes('tile.openstreetmap') ||
       url.hostname.includes('nominatim') ||
       url.hostname.includes('cdnjs') ||
       url.hostname.includes('unpkg') ||
