@@ -3631,7 +3631,7 @@ function removeVoterFromLists(v){
 
 document.getElementById('m-save').addEventListener('click',()=>{
   if(mId===null)return;
-  const v=voters.find(x=>x.id===mId);
+  const v=voters.find(x=>String(x.id)===String(mId));
   const reason=document.getElementById('m-reason').value;
   const isRestriction=RESTRICTION_REASONS.has(reason);
   const isRemove=REMOVE_REASONS.has(reason);
