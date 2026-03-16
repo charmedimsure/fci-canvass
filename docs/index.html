@@ -2875,7 +2875,8 @@ function bindRows(root){
     // Remove old listener by cloning, then re-attach
     const fresh = el.cloneNode(true);
     el.parentNode.replaceChild(fresh, el);
-fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});  });
+fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});
+fresh.addEventListener('touchend',(e)=>{e.preventDefault();const id=fresh.dataset.id;if(id)openModal(id);});  });
 }
 
 // ── MODAL ──────────────────────────────────────────────────
