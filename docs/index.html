@@ -4786,7 +4786,7 @@ async function generateRoutes(){
   if(needsNeighborhood && !neighborhoodPrec){
     toast('Select a neighborhood first', true); return;
   }
-  if(!canvassFor && canvassMode !== 'litdrop'){ toast('Select a race first', true); return; }
+  if(!canvassFor && canvassMode !== 'litdrop' && canvassMode !== 'mail'){ toast('Select a race first', true); return; }
   if(canvassMode === 'litdrop') canvassFor = canvassFor || 'Literature Drop';
   // If running outside a campaign (admin/independent), fetch voters on demand
   if(!ALL_VOTERS_RAW.length){
