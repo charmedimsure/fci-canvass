@@ -2742,7 +2742,8 @@ function vRowHTML(v){
   // Spoke-with line
   let spokeLine='';
   if(v.voters&&v.voters.length>0&&v.spokeWith&&v.spokeWith.length>0){
-const names=v.spokeWith.map(idx=>{const p=v.voters[idx];return Array.isArray(p)?p[0]:String(p);});    spokeLine=`<div style="font-size:11px;color:var(--accent);margin-top:2px;">💬 Spoke with: ${names.join(', ')}</div>`;
+    const names=v.spokeWith.map(idx=>{const p=v.voters[idx];return Array.isArray(p)?p[0]:(p&&typeof p==='object'&&p.name)?p.name.split(' ')[0]:String(p);});
+    spokeLine=`<div style="font-size:11px;color:var(--accent);margin-top:2px;">💬 Spoke with: ${names.join(', ')}</div>`;
   }
   const hhBadge=v.voters&&v.voters.length>1?`<span style="font-size:9px;opacity:.6;margin-right:2px">${v.voters.length}👥</span>`:'';
   // Donor badge
@@ -2875,8 +2876,9 @@ function bindRows(root){
     // Remove old listener by cloning, then re-attach
     const fresh = el.cloneNode(true);
     el.parentNode.replaceChild(fresh, el);
-fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});
-fresh.addEventListener('touchend',(e)=>{e.preventDefault();const id=fresh.dataset.id;if(id)openModal(id);});  });
+    // IDs are now MD5 hex strings — use as string, not number
+    fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});
+  });
 }
 
 // ── MODAL ──────────────────────────────────────────────────
@@ -3415,7 +3417,7 @@ function openModal(id){
     scriptCard.style.display = 'none';
   }
 
-const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
+  const v=voters.find(x=>x.id===id); if(!v)return;
   mId=id; mScore=v.score; mContact=v.contactStatus; mYard=v.yardSign; mOppYard=v.oppYard||false;
   document.getElementById('m-name').textContent=v.name;
   document.getElementById('m-addr').textContent=v.address;
@@ -3447,7 +3449,10 @@ const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
     hhWrap.style.display = '';
     const spokeWith = v.spokeWith||[];
     hhList.innerHTML = v.voters.map((person, idx) => {
-const name = Array.isArray(person) ? `${person[0]} ${person[1]}` : (person && typeof person === 'object' && person.name) ? person.name : String(person);      const sel = spokeWith.includes(idx) ? ' spoke' : '';
+      const name = Array.isArray(person) ? `${person[0]} ${person[1]}`
+                 : (person && typeof person === 'object' && person.name) ? person.name
+                 : String(person);
+      const sel = spokeWith.includes(idx) ? ' spoke' : '';
       return `<button class="hh-chip${sel}" data-hhidx="${idx}" onclick="toggleSpokeWith(this)">${name}</button>`;
     }).join('');
     hhNone.style.display = 'block';
@@ -3632,7 +3637,7 @@ function removeVoterFromLists(v){
 
 document.getElementById('m-save').addEventListener('click',()=>{
   if(mId===null)return;
-  const v=voters.find(x=>String(x.id)===String(mId));
+  const v=voters.find(x=>x.id===mId);
   const reason=document.getElementById('m-reason').value;
   const isRestriction=RESTRICTION_REASONS.has(reason);
   const isRemove=REMOVE_REASONS.has(reason);
@@ -4237,51 +4242,30 @@ function applyMailFilter(useFilters){
 }
 
 function applyMailFiltersToVoters(vlist){
-  // vns entries: [first, last, age (number|null), presOnly (bool)]
   let result = vlist;
 
+  // Age filter — uses v.ages comma-separated string e.g. "21,46,47"
   if(mailFilterAge){
     const {min:mn, max:mx} = mailFilterAge;
-    result = result.map(v=>{
-      const voterList = v.voters || [];
-      // Filter to voters whose individual age (vns[2]) is in range
-      const matched = voterList.filter(entry=>{
-        const age = Array.isArray(entry) ? entry[2] : null;
-        if(age == null) return false;
-        return (mn==null||age>=mn) && (mx==null||age<=mx);
-      });
-      if(!matched.length) return null;
-      // Return a trimmed record: only matching individuals
-      const first = matched[0];
-      const displayName = first ? `${first[0]} ${first[1]}`.trim() : v.name;
-      return {
-        ...v,
-        voters:  matched,
-        ages:    matched.map(e=>e[2]).join(','),
-        hhCount: matched.length,
-        name:    matched.length === voterList.length ? v.name : displayName,
-      };
-    }).filter(Boolean);
+    result = result.filter(v=>{
+      if(!v.ages) return false;
+      const ages = v.ages.split(',').map(Number).filter(a=>!isNaN(a)&&a>0);
+      if(!ages.length) return false;
+      return ages.some(age=>(mn==null||age>=mn)&&(mx==null||age<=mx));
+    });
   }
 
+  // Presidential-only filter — voter voted in a presidential year (2020 or 2024)
   if(mailFilterPresOnly){
-    result = result.map(v=>{
-      const voterList = v.voters || [];
-      const matched = voterList.filter(entry=>Array.isArray(entry) && entry[3] === true);
-      if(!matched.length) return null;
-      const first = matched[0];
-      const displayName = first ? `${first[0]} ${first[1]}`.trim() : v.name;
-      return {
-        ...v,
-        voters:  matched,
-        hhCount: matched.length,
-        name:    matched.length === voterList.length ? v.name : displayName,
-      };
-    }).filter(Boolean);
+    const PRES_YEARS = ['2020','2024','2016','2012','2008'];
+    result = result.filter(v=>{
+      const yrs = (v.yrs || v.yearsVoted || '');
+      return PRES_YEARS.some(y => yrs.includes(y));
+    });
   }
 
   return result.filter(v=>{
-    // Location filter — skipped when donor sort is active
+    // Location filter
     if(!mailSortDonors && mailFilterLocs.length){
       const match = mailFilterLocs.some(loc=>{
         const field = loc.field; const val = loc.value;
@@ -4292,26 +4276,25 @@ function applyMailFiltersToVoters(vlist){
       });
       if(!match) return false;
     }
-    // State house district filter — also applies in donor sort mode via _mailDonorDistrict
+    // District filter — match against D1 stored values
     const districtToCheck = mailSortDonors ? _mailDonorDistrict : mailFilterDistrict;
     if(districtToCheck){
       const distMap = {
-        HD69:{field:'stHouse',value:'HD 69'},
-        HD73:{field:'stHouse',value:'HD 73'},
-        SD20:{field:'stSenate',value:'SD 20'},
-        CD12:{field:'congDist',value:'12'}
+        HD69:{field:'stHouse',  value:'OHIO ST HOUSE REP 69'},
+        HD73:{field:'stHouse',  value:'OHIO ST HOUSE REP 73'},
+        SD20:{field:'stSenate', value:'OHIO STATE SENATE 20'},
+        CD12:{field:'congDist', value:'12TH CONGRESSIONAL'}
       };
       const dm = distMap[districtToCheck];
-      if(dm && (v[dm.field]||'').toUpperCase() !== dm.value.toUpperCase()) return false;
+      if(dm && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
     }
-    // Donor-only filter when sort by donors is active
+    // Donor filter — skip if no donation data (feature not yet wired)
     if(mailSortDonors && !(v.donations && v.donations.length)) return false;
-    // City council ward filter (multi)
+    // Ward filter
     if(!mailSortDonors && mailFilterWards.length){
       if(!mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
     }
     return true;
-  // Sort by total donated desc if donor sort active
   }).sort((a,b)=>{
     if(!mailSortDonors) return 0;
     const aTotal = (a.donations||[]).reduce((s,d)=>s+(d.amount||0),0);
