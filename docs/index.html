@@ -2742,8 +2742,7 @@ function vRowHTML(v){
   // Spoke-with line
   let spokeLine='';
   if(v.voters&&v.voters.length>0&&v.spokeWith&&v.spokeWith.length>0){
-    const names=v.spokeWith.map(idx=>{const p=v.voters[idx];return Array.isArray(p)?p[0]:String(p);});
-    spokeLine=`<div style="font-size:11px;color:var(--accent);margin-top:2px;">💬 Spoke with: ${names.join(', ')}</div>`;
+const names=v.spokeWith.map(idx=>{const p=v.voters[idx];return Array.isArray(p)?p[0]:String(p);});    spokeLine=`<div style="font-size:11px;color:var(--accent);margin-top:2px;">💬 Spoke with: ${names.join(', ')}</div>`;
   }
   const hhBadge=v.voters&&v.voters.length>1?`<span style="font-size:9px;opacity:.6;margin-right:2px">${v.voters.length}👥</span>`:'';
   // Donor badge
@@ -3447,8 +3446,7 @@ const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
     hhWrap.style.display = '';
     const spokeWith = v.spokeWith||[];
     hhList.innerHTML = v.voters.map((person, idx) => {
-      const name = Array.isArray(person) ? `${person[0]} ${person[1]}` : String(person);
-      const sel = spokeWith.includes(idx) ? ' spoke' : '';
+const name = Array.isArray(person) ? `${person[0]} ${person[1]}` : (person && typeof person === 'object' && person.name) ? person.name : String(person);      const sel = spokeWith.includes(idx) ? ' spoke' : '';
       return `<button class="hh-chip${sel}" data-hhidx="${idx}" onclick="toggleSpokeWith(this)">${name}</button>`;
     }).join('');
     hhNone.style.display = 'block';
