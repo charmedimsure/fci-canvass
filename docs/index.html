@@ -3888,13 +3888,16 @@ function updateGenerateBtn(){
 
   const hasArea  = !!document.querySelector('.area-btn.selected');
   const hasNbhd  = !needsNeighborhood || !!neighborhoodPrec;
-  const hasRace  = !!canvassFor || canvassMode === 'litdrop';
+  const hasRace  = !!canvassFor || canvassMode === 'litdrop' || canvassMode === 'mail';
   const hasMode  = !!canvassMode;
   const ready    = hasMode && hasArea && hasNbhd && hasRace;
 
   btn.disabled      = !ready;
   btn.style.opacity = ready ? '1' : '.4';
   btn.style.cursor  = ready ? 'pointer' : 'not-allowed';
+  if(canvassMode === 'mail') btn.textContent = 'Choose Filters →';
+  else if(canvassMode === 'litdrop') btn.textContent = 'Generate Lit Drop Route →';
+  else btn.textContent = 'Generate Routes →';
 
   if(!hasArea){
     hint.textContent = `${ALL_VOTERS_RAW.length.toLocaleString()} Fairfield County voters — select an area above`;
@@ -4544,7 +4547,10 @@ function pickMode(mode){
     document.getElementById('chip-mode').style.display = 'inline';
     document.getElementById('chip-mode').textContent = '✉️ By Mail';
     document.getElementById('change-mode').style.display = 'inline';
-    openMailFilter();
+    // Show area step first — filter opens after area is selected
+    document.getElementById('step-area-wrapper').style.display = 'block';
+    wizOpen('step-area');
+    updateGenerateBtn();
     return;
   }
 
