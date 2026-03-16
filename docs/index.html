@@ -1412,7 +1412,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       </div>
     </div>
     <!-- CENTRAL COMMITTEE DISTRICT -->
-    <div class="mf-section">
+    <div class="mf-section" id="mf-cc-section" style="display:none;">
       <div class="mf-toggle-row">
         <label class="mf-toggle">
           <input type="checkbox" id="mf-cc-toggle" onchange="mfTogglePanel('cc')">
@@ -4097,8 +4097,10 @@ function showMailLabelsOverlay(voterList){
   const _labelData = [];
 
   for(const v of voterList){
-    const parts = v.address.split(',').map(s => s.trim());
-    let line1 = v.address, line2 = '';
+    const _addr = v.address || v.a || '';
+    const _name = v.name || v.n || '';
+    const parts = _addr.split(',').map(s => s.trim());
+    let line1 = _addr, line2 = '';
     if(parts.length >= 3){ line1 = parts[0]; line2 = parts.slice(1).join(', '); }
     else if(parts.length === 2){ line1 = parts[0]; line2 = parts[1]; }
 
@@ -4128,10 +4130,10 @@ function showMailLabelsOverlay(voterList){
       }
     } else {
       const dataIdx = _labelData.length;
-      _labelData.push({ v, first: v.name, last: '', age: null, presOnly: false });
+      _labelData.push({ v, first: _name, last: '', age: null, presOnly: false });
       labelCards.push(
         `<div class="label-card" data-lid="${dataIdx}" onclick="showLabelHistory(${dataIdx})" style="cursor:pointer;">`
-        + `<div class="lc-name">${v.name||''}</div>`
+        + `<div class="lc-name">${_name||''}</div>`
         + `<div class="lc-addr">${line1}${line2?'<br>'+line2:''}</div>`
         + `</div>`
       );
@@ -4307,6 +4309,10 @@ function openMailFilter(){
   document.getElementById('mf-age-min').value='';
   document.getElementById('mf-age-max').value='';
   document.querySelectorAll('.mf-chip').forEach(c=>c.classList.remove('sel'));
+
+  // Show CC filter only for admins
+  const ccSection = document.getElementById('mf-cc-section');
+  if(ccSection) ccSection.style.display = adminSession ? '' : 'none';
 
   document.getElementById('mail-filter-overlay').classList.add('open');
 }
