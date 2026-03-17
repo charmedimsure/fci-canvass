@@ -5031,8 +5031,6 @@ function mfToggleWard(btn){
 
 function applyMailFilter(useFilters){
   document.getElementById('mail-filter-overlay').classList.remove('open');
-  // Hide the wizard generate step so user can't loop back
-  document.getElementById('step-generate').style.display = 'none';
 
   if(useFilters){
     // Age
@@ -5221,6 +5219,9 @@ async function runMailCanvass(){
   if(!mailSortDonors && mailFilterDistrict)    parts.push(mailFilterDistrict);
   if(!mailSortDonors && mailFilterWards.length) parts.push(mailFilterWards.map(w=>w.replace('LANCASTER CITY ','').replace('REYNOLDSBURG ','')).join(', '));
   if(parts.length) toast(`✅ Filtered: ${parts.join(' · ')} — ${filtered.length} voters`);
+  // Change generate button to "Change Filters" to prevent re-triggering routes
+  const genBtn = document.getElementById('generate-btn');
+  if(genBtn){ genBtn.textContent = '⚙️ Change Filters'; }
   showMailQtyPicker(filtered);
 }
 
@@ -5366,6 +5367,9 @@ function pickMode(mode){
   areaField=''; areaValue=''; areaLabel=''; neighborhoodPrec=''; needsNeighborhood=false;
   canvassFor=''; filterField=''; filterDistrict='';
   document.querySelectorAll('.area-btn,.race-btn,.nbhd-btn').forEach(b=>b.classList.remove('selected'));
+  // Reset generate button label
+  const _genBtn = document.getElementById('generate-btn');
+  if(_genBtn) _genBtn.textContent = 'Generate Routes →';
   // Reset area/race/nbhd steps
   wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
 
