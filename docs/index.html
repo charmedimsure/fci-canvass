@@ -117,7 +117,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   }
   html, body { height: 100%; font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: background .25s, color .25s; }
 
-  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:1000; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:7000; }
   .logo { display:flex; align-items:center; }
   .logo-dark  { display: none; }
   .logo-light { display: block; }
@@ -125,7 +125,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   [data-theme="dark"] .logo-dark  { display: block !important; }
 
   [data-theme="dark"] .header-logo {
-    filter: brightness(10);
+    /* No filter — logo has its own colors that work on dark navy header */
   }
 
   .logo span { color:var(--fci-sky); }
@@ -1917,6 +1917,16 @@ function voterFromAPI(v){
   };
 }
 
+function applyVoterEditsToVoter(v){
+  try{
+    const edit = getVoterEdit(v.id);
+    if(edit.phone)    v.phone    = edit.phone;
+    if(edit.email)    v.email    = edit.email;
+    if(edit.excluded) v.excluded = true;
+  }catch(e){}
+  return v;
+}
+
 // Build API filter params from current wizard state or campaign focus areas
 function _voterAPIParams(focusAreas){
   const params = {};
@@ -3562,19 +3572,7 @@ function _saveAdminVoterEdits(edits){
   try{ localStorage.setItem(ADMIN_VOTER_EDITS_KEY, JSON.stringify(edits)); }catch(e){}
 }
 
-function applyVoterEditsToVoter(v){
-  const edits = _loadAdminVoterEdits();
-  const e = edits[String(v.id)];
-  if(!e) return v;
-  return {
-    ...v,
-    name:        e.name    || v.name,
-    address:     e.address || v.address,
-    adminPhone:  e.phone   || v.adminPhone  || '',
-    adminEmail:  e.email   || v.adminEmail  || '',
-    adminExclude: e.exclude || false,
-  };
-}
+
 
 function saveAdminVoterEdits(){
   if(!mId) return;
@@ -3626,13 +3624,7 @@ function saveVoterEdits(edits){
 function getVoterEdit(id){
   return loadVoterEdits()[String(id)] || {};
 }
-function applyVoterEditsToVoter(v){
-  const edit = getVoterEdit(v.id);
-  if(edit.phone)    v.phone    = edit.phone;
-  if(edit.email)    v.email    = edit.email;
-  if(edit.excluded) v.excluded = true;
-  return v;
-}
+
 
 function saveAdminVoterEdits(){
   if(!mId) return;
@@ -7293,7 +7285,7 @@ if('serviceWorker' in navigator){
 </div>
 
 <!-- AUTH LOGIN OVERLAY -->
-<div id="auth-login-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;">
+<div id="auth-login-overlay" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:28px;">
     <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">🔐 Sign In</div>
     <div id="auth-login-subtitle" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;">Admin or campaign account</div>
@@ -7320,7 +7312,7 @@ if('serviceWorker' in navigator){
 </div>
 
 <!-- AUTH REGISTER OVERLAY -->
-<div id="auth-register-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;overflow-y:auto;">
+<div id="auth-register-overlay" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;overflow-y:auto;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:420px;padding:28px;margin:auto;">
     <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">➕ Create Account</div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:22px;">Requires an existing admin login</div>
@@ -7435,7 +7427,7 @@ if('serviceWorker' in navigator){
       <button onclick="volGoToCandidateLogin()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;text-decoration:underline;padding:0;">Log in to your dashboard →</button>
     </div>
     <div style="width:100%;max-width:420px;">
-      <button onclick="showAdminLoginFromFront()" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+      <button onclick="showAdminLoginFromFront()" ontouchend="event.preventDefault();showAdminLoginFromFront();" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
         ⚙️ Admin Login
       </button>
     </div>
