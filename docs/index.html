@@ -923,6 +923,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <div class="hstat">Routes: <b id="hs-r">0</b></div>
     <div class="hstat" style="color:var(--mail)">Mail: <b id="hs-m">0</b></div>
   </div>
+  <button onclick="openVoterLookup()" title="Voter lookup" style="background:none;border:1px solid var(--header-border);color:var(--fci-sky);font-size:15px;width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;">🔍</button>
   <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode" style="background:none;border:1px solid var(--header-border);color:var(--fci-sky);font-size:15px;width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;">🌙</button>
       <button id="cand-btn" onclick="openCandidatePanel()" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:6px 13px;border-radius:99px;cursor:pointer;white-space:nowrap;transition:all .2s;margin-left:auto;" title="Candidate login">
     <span id="cand-btn-icon">🔒</span>
@@ -1637,6 +1638,58 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <textarea class="modal-textarea" id="m-notes" placeholder="Notes from the door knock…"></textarea>
       </div>
     </div>
+    <!-- Admin edit panel - shown only when admin is logged in -->
+    <div id="m-admin-panel" style="display:none;border-top:1px solid var(--border);margin:12px 0 0;padding:14px 0 0;">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin Edit</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
+          <input id="m-admin-phone" type="tel" placeholder="(614) 555-0100"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Email Address</label>
+          <input id="m-admin-email" type="email" placeholder="voter@email.com"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Override Name</label>
+          <input id="m-admin-name" type="text" placeholder="Leave blank to keep original"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Override Address</label>
+          <input id="m-admin-address" type="text" placeholder="Leave blank to keep original"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);">
+          <input type="checkbox" id="m-admin-exclude" style="width:16px;height:16px;accent-color:var(--danger);cursor:pointer;">
+          <label for="m-admin-exclude" style="font-size:13px;color:var(--danger);font-weight:600;cursor:pointer;">Permanently exclude from all lists</label>
+        </div>
+        <button onclick="saveAdminVoterEdits()" style="background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;">Save Admin Changes</button>
+      </div>
+    </div>
+    <!-- ADMIN EDIT SECTION -->
+    <div id="m-admin-section" style="display:none;border-top:2px solid var(--accent);margin-top:14px;padding-top:14px;">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin — Edit Voter Record</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
+          <input id="m-admin-phone" type="tel" placeholder="(614) 555-0100"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Email Address</label>
+          <input id="m-admin-email" type="email" placeholder="voter@email.com"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
+          <input type="checkbox" id="m-admin-exclude" style="width:15px;height:15px;accent-color:var(--danger);">
+          <label for="m-admin-exclude" style="font-size:13px;color:var(--danger);font-weight:600;cursor:pointer;">Exclude from all lists permanently</label>
+        </div>
+      </div>
+      <button onclick="saveAdminVoterEdits()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;margin-top:8px;">Save Admin Changes →</button>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-cancel" id="m-cancel">Cancel</button>
       <button class="btn btn-save" id="m-save">Save Changes</button>
@@ -1893,7 +1946,7 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
     hideLoadingOverlay();
     return ALL_VOTERS_RAW;
   } catch(e){
@@ -2077,7 +2130,7 @@ async function selectArea(btn){
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -2204,7 +2257,10 @@ function selectNeighborhood(btn){
     needsNeighborhood = false;
     wizCollapse('step-nbhd','chip-nbhd', 'Entire City', 'change-nbhd');
     if(canvassMode === 'mail'){
-      openMailFilter();
+      // Show generate button so user can tap after voters load
+      document.getElementById('generate-btn').textContent = 'Choose Filters →';
+      wizShow('step-generate');
+      updateGenerateBtn();
       return;
     }
     filterRaceButtons(_currentAreaVoters || ALL_VOTERS_RAW);
@@ -2419,9 +2475,9 @@ function applyFilters(voterList){
     list = list.filter(v => v.donations && v.donations.length > 0);
   }
 
-  // Always exclude Republican donors and registered Republicans from all routes
+  // Always exclude Republican donors, registered Republicans, and R-primary-only voters
   const beforeExclusion = list.length;
-  list = list.filter(v => !isRepDonor(v) && !isRegisteredRep(v));
+  list = list.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v));
   if(beforeExclusion > list.length){
     const excluded = beforeExclusion - list.length;
     setTimeout(()=>toast(`${list.length.toLocaleString()} voters (${excluded} R donors/registered R excluded)`), 400);
@@ -2530,15 +2586,31 @@ function detectCols(headers){
   };
 }
 
-// Returns true if voter has donated to Republican causes
+// Returns true if voter has donated ONLY to Republican causes (no D or O donations)
 function isRepDonor(v){
-  return v.donations && v.donations.length > 0 &&
-    v.donations.some(d => d.lean === 'R');
+  if(!v.donations || !v.donations.length) return false;
+  // Must have at least one R donation AND zero D/O donations
+  const hasR = v.donations.some(d => d.lean === 'R');
+  const hasD = v.donations.some(d => d.lean === 'D');
+  const hasO = v.donations.some(d => d.lean === 'O');
+  return hasR && !hasD && !hasO;
 }
 
 // Returns true if voter is a registered Republican
 function isRegisteredRep(v){
   return (v.party || '').toUpperCase() === 'R';
+}
+
+// Returns true if voter has ONLY participated in Republican primaries
+// and has never voted in a general election
+function isRepPrimaryOnly(v){
+  // If they voted in generals they might be persuadable — keep them
+  const generals = parseInt(v.voting) || 0;
+  if(generals > 0) return false;
+  // If last primary was R and no generals voted, exclude
+  const lp = (v.lastPrimary || '').toUpperCase();
+  if(lp === 'R') return true;
+  return false;
 }
 
 function autoScore(party, voting, lastPrimary, specialsVoted, donations){
@@ -2743,7 +2815,7 @@ function adaptiveThreshold(pts){
 
 function clusterVoters(vl){
   // Exclude Republican donors and registered Republicans before clustering
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v));
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v));
   const ROUTE_TARGET=15;
   const valid=vl.filter(v=>v.lat&&v.lon);
   const noCoord=vl.filter(v=>!v.lat||!v.lon);
@@ -3394,6 +3466,212 @@ async function authSignOut(){
 })();
 
 
+// ── VOTER LOOKUP ──────────────────────────────────────────────
+function openVoterLookup(){
+  document.getElementById('vlookup-last').value = '';
+  document.getElementById('vlookup-first').value = '';
+  document.getElementById('vlookup-err').style.display = 'none';
+  document.getElementById('vlookup-results').style.display = 'none';
+  document.getElementById('vlookup-list').innerHTML = '';
+  document.getElementById('voter-lookup-overlay').style.display = 'flex';
+  setTimeout(()=>document.getElementById('vlookup-last').focus(), 100);
+}
+
+function closeVoterLookup(){
+  document.getElementById('voter-lookup-overlay').style.display = 'none';
+}
+
+async function doVoterLookup(){
+  const last  = document.getElementById('vlookup-last').value.trim();
+  const first = document.getElementById('vlookup-first').value.trim();
+  const err   = document.getElementById('vlookup-err');
+  const btn   = document.getElementById('vlookup-btn');
+  err.style.display = 'none';
+
+  if(!last){ err.textContent = 'Last name is required'; err.style.display = 'block'; return; }
+
+  btn.textContent = 'Searching…'; btn.disabled = true;
+  try {
+    const params = { last_name: last, limit: 50 };
+    if(first) params.first_name = first;
+
+    const res = await apiGet('/api/voters', params);
+    const found = (res.voters || []).map(voterFromAPI).filter(v => !isRegisteredRep(v));
+
+    const resultsEl = document.getElementById('vlookup-results');
+    const countEl   = document.getElementById('vlookup-count');
+    const listEl    = document.getElementById('vlookup-list');
+
+    if(!found.length){
+      err.textContent = 'No voters found — try a different spelling or last name only';
+      err.style.display = 'block';
+      resultsEl.style.display = 'none';
+      return;
+    }
+
+    countEl.textContent = found.length + ' voter' + (found.length !== 1 ? 's' : '') + ' found';
+    listEl.innerHTML = found.map(v => {
+      const score = autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
+      const scoreColor = score === 'strong' ? 'var(--strong)' : score === 'leans' ? 'var(--leans)' : 'var(--text-muted)';
+      const scoreLabel = score === 'strong' ? '★ Strong' : score === 'leans' ? '~ Leans' : '? Unknown';
+      const hhCount = v.voters && v.voters.length > 1 ? ' · ' + v.voters.length + ' in household' : '';
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;" data-vlookup-id="' + v.id + '" onclick="vlookupOpenProfile(this.dataset.vlookupId)">'
+        + '<div style="font-weight:700;color:var(--text);font-size:14px;">' + (v.name || '') + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + (v.address || '') + '</div>'
+        + '<div style="display:flex;gap:10px;margin-top:6px;font-size:11px;">'
+        + '<span style="color:' + scoreColor + ';font-weight:600;">' + scoreLabel + '</span>'
+        + '<span style="color:var(--text-muted);">' + (v.party === 'D' ? 'Democrat' : v.party || 'NP') + hhCount + '</span>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+
+    // Store results so we can open profiles
+    window._vlookupVoters = found;
+    resultsEl.style.display = 'block';
+
+  } catch(e){
+    err.textContent = 'Search failed: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.textContent = 'Search →'; btn.disabled = false;
+  }
+}
+
+function vlookupOpenProfile(id){
+  // Add voter to the voters array if not already there so openModal can find it
+  if(!voters.find(v => String(v.id) === String(id))){
+    const v = (window._vlookupVoters || []).find(v => String(v.id) === String(id));
+    if(v){
+      v.score = autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
+      voters.push(v);
+    }
+  }
+  closeVoterLookup();
+  openModal(id);
+}
+
+
+// ── ADMIN VOTER EDITS ─────────────────────────────────────
+const ADMIN_VOTER_EDITS_KEY = 'fci_admin_voter_edits'; // localStorage
+
+function _loadAdminVoterEdits(){
+  try{ return JSON.parse(localStorage.getItem(ADMIN_VOTER_EDITS_KEY)||'{}'); }catch(e){ return {}; }
+}
+
+function _saveAdminVoterEdits(edits){
+  try{ localStorage.setItem(ADMIN_VOTER_EDITS_KEY, JSON.stringify(edits)); }catch(e){}
+}
+
+function applyVoterEditsToVoter(v){
+  const edits = _loadAdminVoterEdits();
+  const e = edits[String(v.id)];
+  if(!e) return v;
+  return {
+    ...v,
+    name:        e.name    || v.name,
+    address:     e.address || v.address,
+    adminPhone:  e.phone   || v.adminPhone  || '',
+    adminEmail:  e.email   || v.adminEmail  || '',
+    adminExclude: e.exclude || false,
+  };
+}
+
+function saveAdminVoterEdits(){
+  if(!mId) return;
+  const v = voters.find(x => String(x.id) === String(mId));
+  if(!v) return;
+
+  const phone   = document.getElementById('m-admin-phone').value.trim();
+  const email   = document.getElementById('m-admin-email').value.trim();
+  const name    = document.getElementById('m-admin-name').value.trim();
+  const address = document.getElementById('m-admin-address').value.trim();
+  const exclude = document.getElementById('m-admin-exclude').checked;
+
+  const edits = _loadAdminVoterEdits();
+  edits[String(v.id)] = { phone, email, name, address, exclude, ts: new Date().toISOString() };
+  _saveAdminVoterEdits(edits);
+
+  // Apply edits to the live voter object
+  if(name)    v.name    = name;
+  if(address) v.address = address;
+  v.adminPhone   = phone;
+  v.adminEmail   = email;
+  v.adminExclude = exclude;
+
+  if(exclude){
+    // Remove from all active lists
+    removeVoterFromLists(v);
+    closeModal();
+    renderWalk(); renderMail(); renderAllRows(); updateStats();
+    toast(v.name + ' excluded from all lists ✓');
+  } else {
+    // Refresh the row
+    refreshWalkCard(v.clusterNum != null ? v.clusterNum - 1 : 0);
+    closeModal();
+    toast('Admin edits saved for ' + v.name + ' ✓');
+  }
+}
+
+
+// ── ADMIN VOTER EDITS ────────────────────────────────────────
+// Stored in localStorage: fci_voter_edits = { [voterId]: { phone, email, excluded } }
+const VOTER_EDITS_KEY = 'fci_voter_edits';
+
+function loadVoterEdits(){
+  try{ return JSON.parse(localStorage.getItem(VOTER_EDITS_KEY)||'{}'); }catch(e){ return {}; }
+}
+function saveVoterEdits(edits){
+  try{ localStorage.setItem(VOTER_EDITS_KEY, JSON.stringify(edits)); }catch(e){}
+}
+function getVoterEdit(id){
+  return loadVoterEdits()[String(id)] || {};
+}
+function applyVoterEditsToVoter(v){
+  const edit = getVoterEdit(v.id);
+  if(edit.phone)    v.phone    = edit.phone;
+  if(edit.email)    v.email    = edit.email;
+  if(edit.excluded) v.excluded = true;
+  return v;
+}
+
+function saveAdminVoterEdits(){
+  if(!mId) return;
+  const phone    = document.getElementById('m-admin-phone').value.trim();
+  const email    = document.getElementById('m-admin-email').value.trim();
+  const excluded = document.getElementById('m-admin-exclude').checked;
+
+  const edits = loadVoterEdits();
+  const id    = String(mId);
+
+  if(phone || email || excluded){
+    edits[id] = { phone, email, excluded };
+  } else {
+    delete edits[id]; // clear if nothing set
+  }
+  saveVoterEdits(edits);
+
+  // Apply to live voter object
+  const v = voters.find(x => String(x.id) === id);
+  if(v){
+    if(phone)    v.phone    = phone;
+    if(email)    v.email    = email;
+    if(excluded) v.excluded = true;
+
+    // Remove from all lists if excluded
+    if(excluded){
+      removeVoterFromLists(v);
+      closeModal();
+      renderMap(); renderWalk(); renderMail(); renderAllRows(); updateStats();
+      toast(v.name + ' excluded from all lists ✓');
+      return;
+    }
+  }
+
+  closeModal();
+  toast('Voter record updated ✓');
+}
+
+
 // ── ADMIN CANVASS FUNCTIONS ───────────────────────────────
 function adminCreateCampaign(){
   const name = document.getElementById('admin-cam-name').value.trim();
@@ -3414,8 +3692,8 @@ function adminCreateCampaign(){
   toast('Campaign "' + name + '" created ✓');
 }
 
-function adminCanvassAs(camId){
-  const cams = loadCampaigns();
+async function adminCanvassAs(camId){
+  const cams = await loadCampaignsAsync();
   const cam = cams[camId];
   if(!cam){ toast('Campaign not found', true); return; }
 
@@ -3613,7 +3891,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+      const apiVoters = (r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
       ALL_VOTERS_RAW = apiVoters;
       sheetVoters = ids.map(id =>
         voters.find(v => String(v.id) === id) ||
@@ -3828,6 +4106,21 @@ function openModal(id){
   mId=id; mScore=v.score; mContact=v.contactStatus; mYard=v.yardSign; mOppYard=v.oppYard||false;
   document.getElementById('m-name').textContent=v.name;
   document.getElementById('m-addr').textContent=v.address;
+  // Show phone/email if available
+  let contactInfoEl = document.getElementById('m-contact-info');
+  if(!contactInfoEl){
+    contactInfoEl = document.createElement('div');
+    contactInfoEl.id = 'm-contact-info';
+    contactInfoEl.style.cssText = 'font-size:12px;color:var(--fci-sky);margin-top:3px;';
+    document.getElementById('m-addr').insertAdjacentElement('afterend', contactInfoEl);
+  }
+  const phone = v.phone || getVoterEdit(v.id).phone || '';
+  const email = v.email || getVoterEdit(v.id).email || '';
+  const contactParts = [];
+  if(phone) contactParts.push('📞 ' + phone);
+  if(email) contactParts.push('✉️ ' + email);
+  contactInfoEl.textContent = contactParts.join('  ·  ');
+  contactInfoEl.style.display = contactParts.length ? '' : 'none';
   document.getElementById('m-party').textContent=v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'—';
   document.getElementById('m-ages').textContent=v.ages ? v.ages.split(',').join(', ') : '—';
 
@@ -3945,6 +4238,37 @@ function openModal(id){
     donorEl.style.display='';
   } else {
     donorEl.style.display='none';
+  }
+
+  // Show admin edit panel if admin is logged in
+  const adminPanel = document.getElementById('m-admin-panel');
+  if(adminPanel){
+    adminPanel.style.display = adminSession ? 'block' : 'none';
+    if(adminSession){
+      // Load any existing admin edits for this voter
+      const edits = _loadAdminVoterEdits();
+      const e = edits[String(id)] || {};
+      document.getElementById('m-admin-phone').value   = e.phone   || v.adminPhone  || '';
+      document.getElementById('m-admin-email').value   = e.email   || v.adminEmail  || '';
+      document.getElementById('m-admin-name').value    = e.name    || '';
+      document.getElementById('m-admin-address').value = e.address || '';
+      document.getElementById('m-admin-exclude').checked = e.exclude || false;
+    }
+  }
+
+  // Show admin edit section if admin is logged in
+  const adminSec = document.getElementById('m-admin-section');
+  if(adminSec){
+    if(adminSession){
+      adminSec.style.display = '';
+      // Load existing edits for this voter
+      const edit = getVoterEdit(v.id);
+      document.getElementById('m-admin-phone').value   = edit.phone   || v.phone   || '';
+      document.getElementById('m-admin-email').value   = edit.email   || v.email   || '';
+      document.getElementById('m-admin-exclude').checked = edit.excluded || v.excluded || false;
+    } else {
+      adminSec.style.display = 'none';
+    }
   }
 
   document.getElementById('modal-overlay').classList.add('open');
@@ -4110,7 +4434,7 @@ document.getElementById('m-save').addEventListener('click',()=>{
   }
 
   v.score=mScore;
-  v.scoreOverride=(mScore!==autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted));
+  v.scoreOverride=(mScore!==autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted,v.donations));
   v.contactStatus=mContact;
   v.contactReason=reason;
   v.restricted=isRestriction;
@@ -4464,7 +4788,7 @@ function showLabelHistory(dataIdx){
     const voted = yearsArr.includes(String(yr));
     const isPrimary = voted && yr % 2 !== 0; // odd years often off-cycle
     return `<span title="${yr}" style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;font-size:9px;color:var(--text-muted);">`
-      + `<span style="width:12px;height:12px;border-radius:50%;background:${voted?'var(--accent)':'var(--surface2)'};border:1px solid var(--border);display:block;"></span>`
+      + `<span style="width:12px;height:12px;border-radius:50%;background:${voted?'#22c55e':'var(--surface2)'};border:1px solid ${voted?'#16a34a':'var(--border)'};display:block;"></span>`
       + `${yr}</span>`;
   }).join('');
 
@@ -4659,6 +4983,16 @@ function _populateDonorOrgChips(){
   });
 
   const orgs = Object.entries(orgCounts)
+    .filter(([org]) => {
+      // Exclude orgs that are exclusively R-leaning
+      const orgDonations = (ALL_VOTERS_RAW || []).flatMap(v =>
+        (v.donations || []).filter(d => (d.committee || '').trim() === org)
+      );
+      const hasD = orgDonations.some(d => d.lean === 'D');
+      const hasO = orgDonations.some(d => d.lean === 'O');
+      const allR = orgDonations.every(d => d.lean === 'R');
+      return !allR; // show org if it has any D or O donations
+    })
     .sort((a, b) => b[1] - a[1]); // sort by frequency
 
   if(!orgs.length){
@@ -4809,8 +5143,8 @@ function applyMailFiltersToVoters(vlist){
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
       if(!mailFilterCcPrecincts.includes((v.precinctName||'').toUpperCase())) return false;
     }
-    // Always exclude Republican donors and registered Republicans
-    if(isRepDonor(v) || isRegisteredRep(v)) return false;
+    // Always exclude Republican donors, registered Republicans, and R-primary-only voters
+    if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
     return true;
   }).sort((a,b)=>{
     if(!mailSortDonors) return 0;
@@ -4836,7 +5170,7 @@ async function runMailCanvass(){
       if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
       if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -4850,7 +5184,7 @@ async function runMailCanvass(){
     contactStatus:'pending',contactReason:'',yardSign:false,oppYard:false,notes:'',
     assignment:null,clusterNum:null,score:null,scoreOverride:false
   }));
-  base.forEach(v=>{ v.score=autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted); });
+  base.forEach(v=>{ v.score=autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted,v.donations); });
 
   // ── Campaign mode: apply contact state & exclude already-contacted voters ──
   if(volunteerCampaignId){
@@ -5064,6 +5398,7 @@ function pickMode(mode){
     document.getElementById('chip-mode').style.display = 'inline';
     document.getElementById('chip-mode').textContent = '✉️ By Mail';
     document.getElementById('change-mode').style.display = 'inline';
+    document.getElementById('generate-btn').textContent = 'Choose Filters →';
     // Show area step first — filter opens after area is selected
     document.getElementById('step-area-wrapper').style.display = 'block';
     wizOpen('step-area');
@@ -5328,7 +5663,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -5346,7 +5681,7 @@ async function generateRoutes(){
     })));
   }
   if(!voters.length){ toast('No voters match this district — check district number',true); return; }
-  voters.forEach(v=>{ v.score=autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted); });
+  voters.forEach(v=>{ v.score=autoScore(v.party,v.voting,v.lastPrimary,v.specialsVoted,v.donations); });
 
   // ── Campaign mode: apply contact state & remove already-contacted voters ──
   if(volunteerCampaignId){
@@ -5746,7 +6081,7 @@ function volBackToChoice(){
 }
 
 async function volPickCampaign(camId){
-  const cams = loadCampaigns();
+  const cams = await loadCampaignsAsync();
   const cam = cams[camId];
   if(!cam) return;
 
@@ -5965,16 +6300,22 @@ async function loadCampaignsAsync(){
   try{
     const r = await apiGet('/api/campaigns');
     const cams = r.campaigns || {};
+    // Update local cache with cloud data
     localStorage.setItem(CAND_STORE_KEY, JSON.stringify(cams));
     return cams;
   }catch(e){
-    // Fall back to local cache if offline
+    // Offline — use local cache
     try{ return JSON.parse(localStorage.getItem(CAND_STORE_KEY)||'{}'); }catch(_){ return {}; }
   }
 }
 function loadCampaigns(){
-  // Sync fallback — used internally where async isn't wired yet
-  try{ return JSON.parse(localStorage.getItem(CAND_STORE_KEY)||'{}'); }catch(e){ return {}; }
+  // Returns local cache immediately (sync), but triggers background cloud refresh
+  try{
+    const cached = JSON.parse(localStorage.getItem(CAND_STORE_KEY)||'{}');
+    // Always refresh from cloud in the background
+    loadCampaignsAsync().catch(()=>{});
+    return cached;
+  }catch(e){ return {}; }
 }
 async function saveCampaignsAsync(cams){
   localStorage.setItem(CAND_STORE_KEY, JSON.stringify(cams));
@@ -6638,11 +6979,11 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+      pool = (result.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
+        pool = (result2.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
       }
     } catch(e) {
       chipsEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted);">Could not load precincts: ${e.message}</div>`;
@@ -6883,12 +7224,12 @@ function exportCandidateCSV(){
 
 // ── LOAD CANDIDATE SESSION ON STARTUP ─────────────────────────
 // Check for previously saved candidate in sessionStorage (tab-scoped login)
-(function initCandidateSession(){
+(async function initCandidateSession(){
   try{
     const saved = sessionStorage.getItem('fci_active_candidate');
     if(saved){
       const sess=JSON.parse(saved);
-      const cams=loadCampaigns();
+      const cams=await loadCampaignsAsync();
       if(cams[sess.id]){
         candidateSession=cams[sess.id];
         afterCandidateLogin();
@@ -6920,6 +7261,36 @@ if('serviceWorker' in navigator){
 
 
 </script>
+
+<!-- VOTER LOOKUP OVERLAY -->
+<div id="voter-lookup-overlay" style="display:none;position:fixed;inset:0;z-index:8500;background:rgba(0,0,0,.85);align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:480px;padding:24px;margin-top:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div style="font-size:18px;font-weight:800;color:var(--text);">🔍 Voter Lookup</div>
+      <button onclick="closeVoterLookup()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px;">✕</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <div style="flex:1;">
+        <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Last Name *</label>
+        <input id="vlookup-last" type="text" placeholder="Smith" autocomplete="family-name"
+          onkeydown="if(event.key==='Enter')doVoterLookup()"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">First Name</label>
+        <input id="vlookup-first" type="text" placeholder="Jane (optional)" autocomplete="given-name"
+          onkeydown="if(event.key==='Enter')doVoterLookup()"
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+      </div>
+    </div>
+    <button id="vlookup-btn" onclick="doVoterLookup()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;margin-bottom:14px;">Search →</button>
+    <div id="vlookup-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:10px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>
+    <div id="vlookup-results" style="display:none;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;" id="vlookup-count"></div>
+      <div id="vlookup-list" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
 
 <!-- AUTH LOGIN OVERLAY -->
 <div id="auth-login-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;">

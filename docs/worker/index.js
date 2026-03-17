@@ -267,8 +267,11 @@ async function getVoters(request, env) {
   if (p.get('precinct'))     { where.push('precinct = ?');     params.push(p.get('precinct')); }
   if (p.get('ward'))         { where.push('ward = ?');         params.push(p.get('ward')); }
   if (p.get('score'))        { where.push('score = ?');        params.push(p.get('score')); }
+  if (p.get('last_name'))    { where.push('last_name LIKE ?'); params.push(p.get('last_name').toUpperCase() + '%'); }
+  if (p.get('first_name'))   { where.push('first_name LIKE ?'); params.push(p.get('first_name').toUpperCase() + '%'); }
 
-  const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  where.push("party != 'R'");
+  const whereSQL = 'WHERE ' + where.join(' AND ');
   const limit    = Math.min(parseInt(p.get('limit') || '60000'), 60000);
   const offset   = parseInt(p.get('offset') || '0');
   // Always exclude registered Republicans
@@ -408,8 +411,9 @@ async function loadVoters(request, env) {
   const stmt = env.DB.prepare(`
     INSERT OR REPLACE INTO voters
       (id, data, lat, lon, municipality, township, village,
-       precinct, precinct_name, st_house, st_senate, cong_dist, ward, score, party)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       precinct, precinct_name, st_house, st_senate, cong_dist, ward, score, party,
+       last_name, first_name)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
 
   const BATCH = 100;
@@ -430,6 +434,8 @@ async function loadVoters(request, env) {
       (v.ward         || '').toUpperCase(),
       v.score  || '',
       v.party  || '',
+      (v.lastName  || v.last_name  || '').toUpperCase(),
+      (v.firstName || v.first_name || '').toUpperCase(),
     ));
     await env.DB.batch(batch);
     count += chunk.length;
