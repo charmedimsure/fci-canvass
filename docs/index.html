@@ -1286,7 +1286,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     </div>
 
     <div style="display:flex;gap:10px;">
-      <button onclick="document.getElementById('mail-qty-overlay').style.display='none'" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Back</button>
+      <button onclick="document.getElementById('mail-qty-overlay').style.display='none';openMailFilter();" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Back</button>
       <button onclick="mqConfirm()" style="flex:2;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;border-radius:9px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Generate List →</button>
     </div>
   </div>
@@ -5031,6 +5031,8 @@ function mfToggleWard(btn){
 
 function applyMailFilter(useFilters){
   document.getElementById('mail-filter-overlay').classList.remove('open');
+  // Hide the wizard generate step so user can't loop back
+  document.getElementById('step-generate').style.display = 'none';
 
   if(useFilters){
     // Age
