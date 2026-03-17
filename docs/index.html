@@ -1727,6 +1727,33 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 // ══════════════════════════════════════════════════════════════════
 const FCI_API_URL = 'https://fci-canvass.fci-canvass.workers.dev';
 const FCI_API_KEY = 'ohiofcicanvass7312';
+
+// ── AUTH SESSION ──────────────────────────────────────────────────────────
+let _fciSession = null;  // { token, user, expiresAt }
+
+function _saveSession(session){
+  _fciSession = session;
+  try{ localStorage.setItem('fci_session', JSON.stringify(session)); }catch(e){}
+}
+function _loadSession(){
+  try{
+    const s = JSON.parse(localStorage.getItem('fci_session')||'null');
+    if(s && s.expiresAt && new Date(s.expiresAt) > new Date()){
+      _fciSession = s;
+    } else {
+      localStorage.removeItem('fci_session');
+    }
+  }catch(e){}
+}
+function _clearSession(){
+  _fciSession = null;
+  try{ localStorage.removeItem('fci_session'); }catch(e){}
+}
+function _sessionHeader(){
+  if(_fciSession && _fciSession.token) return {'X-FCI-Session': _fciSession.token};
+  return {'X-FCI-Key': FCI_API_KEY};  // fallback to legacy key
+}
+_loadSession();
 // ── CENTRAL COMMITTEE VACANCY DATA (rev 1/20/26) ──────────────────
 const CENTRAL_COMMITTEE = {"AMANDA A": {"vacant": true, "holder": ""}, "AMANDA B": {"vacant": true, "holder": ""}, "BALTIMORE VILLAGE A": {"vacant": true, "holder": ""}, "BALTIMORE VILLAGE B": {"vacant": false, "holder": "Lieber, Michael B"}, "BERNE A": {"vacant": true, "holder": ""}, "BERNE B": {"vacant": true, "holder": ""}, "BERNE C": {"vacant": true, "holder": ""}, "BERNE D": {"vacant": false, "holder": "Oatney, Michael Keith"}, "BLOOM A": {"vacant": false, "holder": "Shahan, Tyler Austin Zackery"}, "BLOOM B": {"vacant": false, "holder": "Bailey, Reed Michael"}, "BLOOM C": {"vacant": true, "holder": ""}, "BLOOM D": {"vacant": false, "holder": "Belli, Casey"}, "BLOOM E": {"vacant": false, "holder": "Johnson, Paul R"}, "BREMEN VILLAGE": {"vacant": false, "holder": "Kunkler, Mary Frances"}, "CLEARCREEK A": {"vacant": false, "holder": "Morris, Amy Lynn"}, "CLEARCREEK B": {"vacant": false, "holder": "Rigsby, Amy M"}, "COLUMBUS CITY A": {"vacant": true, "holder": ""}, "COLUMBUS CITY B": {"vacant": true, "holder": ""}, "COLUMBUS CITY C": {"vacant": true, "holder": ""}, "COLUMBUS CITY D": {"vacant": true, "holder": ""}, "COLUMBUS CITY E": {"vacant": false, "holder": "Ashley, Nancy Tilden"}, "COLUMBUS CITY F": {"vacant": false, "holder": "Kreis, Caroline Ann"}, "GREENFIELD A": {"vacant": true, "holder": ""}, "GREENFIELD B": {"vacant": false, "holder": "Scarmack, Michael Charles"}, "GREENFIELD C": {"vacant": false, "holder": "Tipple, Jeff Allen"}, "GREENFIELD D": {"vacant": false, "holder": "Kraner, Jeffrey Lee"}, "HOCKING A": {"vacant": true, "holder": ""}, "HOCKING B": {"vacant": false, "holder": "Williams, Robert L"}, "HOCKING C": {"vacant": false, "holder": "Hackleman Good, Leah Diane"}, "LANCASTER CITY 1-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 1-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 1-C": {"vacant": false, "holder": "Appel, Allison Arlene"}, "LANCASTER CITY 1-D": {"vacant": false, "holder": "Mcatee, Nancy Sue"}, "LANCASTER CITY 1-E": {"vacant": true, "holder": ""}, "LANCASTER CITY 2-A": {"vacant": false, "holder": "Weaver, Ryan Richard"}, "LANCASTER CITY 2-B": {"vacant": false, "holder": "Mattlin, Jay Alon"}, "LANCASTER CITY 2-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 2-D": {"vacant": false, "holder": "Blaisdell, Howard M"}, "LANCASTER CITY 3-A": {"vacant": false, "holder": "Culver, Kenneth David"}, "LANCASTER CITY 3-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 3-C": {"vacant": false, "holder": "Riggs, Neil Christopher"}, "LANCASTER CITY 3-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 3-E": {"vacant": false, "holder": "Brown, Cary James"}, "LANCASTER CITY 4-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 4-B": {"vacant": false, "holder": "Turner, Debra A"}, "LANCASTER CITY 4-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 4-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 5-A": {"vacant": false, "holder": "Everitt, Bryan Matthew"}, "LANCASTER CITY 5-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 5-C": {"vacant": false, "holder": "Rosser, Melissa Dawn"}, "LANCASTER CITY 5-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-B": {"vacant": false, "holder": "Aldridge, Aimee L"}, "LANCASTER CITY 6-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-D": {"vacant": true, "holder": ""}, "LIBERTY A": {"vacant": false, "holder": "Henley, Richard Downey"}, "LIBERTY B": {"vacant": true, "holder": ""}, "LIBERTY C": {"vacant": true, "holder": ""}, "LIBERTY D": {"vacant": true, "holder": ""}, "LITHOPOLIS VILLAGE A": {"vacant": true, "holder": ""}, "LITHOPOLIS VILLAGE B": {"vacant": false, "holder": "Daniels, Amber R"}, "MADISON A": {"vacant": true, "holder": ""}, "PICKERINGTON CITY A": {"vacant": true, "holder": ""}, "PICKERINGTON CITY B": {"vacant": true, "holder": ""}, "PICKERINGTON CITY C": {"vacant": true, "holder": ""}, "PICKERINGTON CITY D": {"vacant": false, "holder": "Potelicki, Christine E"}, "PICKERINGTON CITY E": {"vacant": false, "holder": "Gellert, David J"}, "PICKERINGTON CITY F": {"vacant": true, "holder": ""}, "PICKERINGTON CITY G": {"vacant": true, "holder": ""}, "PICKERINGTON CITY H": {"vacant": true, "holder": ""}, "PICKERINGTON CITY I": {"vacant": false, "holder": "Barletta, Anthony J"}, "PICKERINGTON CITY J": {"vacant": true, "holder": ""}, "PICKERINGTON CITY K": {"vacant": false, "holder": "Newman, Charles E"}, "PICKERINGTON CITY L": {"vacant": false, "holder": "Fuentes Jr, Lazaro G"}, "PICKERINGTON CITY M": {"vacant": true, "holder": ""}, "PICKERINGTON CITY N": {"vacant": true, "holder": ""}, "PICKERINGTON CITY O": {"vacant": true, "holder": ""}, "PICKERINGTON CITY P": {"vacant": false, "holder": "Bowden, Adrienne M"}, "PICKERINGTON CITY Q": {"vacant": true, "holder": ""}, "PLEASANT A": {"vacant": true, "holder": ""}, "PLEASANT B": {"vacant": true, "holder": ""}, "PLEASANT C": {"vacant": true, "holder": ""}, "PLEASANT D": {"vacant": true, "holder": ""}, "PLEASANT E": {"vacant": false, "holder": "Comer, David Cecil"}, "PLEASANT F": {"vacant": true, "holder": ""}, "RICHLAND EAST": {"vacant": false, "holder": "Mccandlish, Rachel Jane"}, "RICHLAND WEST": {"vacant": false, "holder": "Bugh Ii, David Arthur"}, "RUSHCREEK A": {"vacant": true, "holder": ""}, "RUSHCREEK B": {"vacant": true, "holder": ""}, "VIOLET A": {"vacant": false, "holder": "Lewis, Jennifer Lynn"}, "VIOLET B": {"vacant": false, "holder": "Meade, Darren Lyle"}, "VIOLET C": {"vacant": true, "holder": ""}, "VIOLET D": {"vacant": false, "holder": "Ward Tackett, Michele E"}, "VIOLET E": {"vacant": true, "holder": ""}, "VIOLET F": {"vacant": false, "holder": "Pinkins, Willie James"}, "VIOLET G": {"vacant": false, "holder": "Brown, Etha C"}, "VIOLET H": {"vacant": true, "holder": ""}, "VIOLET I": {"vacant": false, "holder": "Sottosanti, Karen Suzanne"}, "VIOLET J": {"vacant": true, "holder": ""}, "VIOLET K": {"vacant": false, "holder": "Low, Samantha Dawn Tong"}, "VIOLET L": {"vacant": true, "holder": ""}, "VIOLET M": {"vacant": true, "holder": ""}, "VIOLET N": {"vacant": false, "holder": "Riffle, Brett H"}, "VIOLET O": {"vacant": false, "holder": "Pransky, Brett Eric"}, "VIOLET P": {"vacant": false, "holder": "Vanmeter, Jeremy A"}, "VIOLET Q": {"vacant": false, "holder": "Parker, Jean Marie"}, "VIOLET R": {"vacant": true, "holder": ""}, "WALNUT A": {"vacant": false, "holder": "Whitaker, Velma Faye"}, "WALNUT B": {"vacant": true, "holder": ""}, "WALNUT C": {"vacant": false, "holder": "Keller, Teddy W"}, "WALNUT D": {"vacant": false, "holder": "Kinniard, James Brownie"}};
 
@@ -1734,20 +1761,21 @@ const CENTRAL_COMMITTEE = {"AMANDA A": {"vacant": true, "holder": ""}, "AMANDA B
 async function apiGet(path, params={}){
   const url = new URL(FCI_API_URL + path);
   Object.entries(params).forEach(([k,v])=>{ if(v!=null) url.searchParams.set(k,String(v)); });
-  const r = await fetch(url.toString(),{headers:{'X-FCI-Key':FCI_API_KEY}});
+  const r = await fetch(url.toString(),{headers:{...{'Content-Type':'application/json'},..._sessionHeader()}});
   if(!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
 async function apiPost(path, data){
   const r = await fetch(FCI_API_URL+path,{
-    method:'POST',headers:{'Content-Type':'application/json','X-FCI-Key':FCI_API_KEY},
+    method:'POST',
+    headers:{'Content-Type':'application/json',..._sessionHeader()},
     body:JSON.stringify(data)
   });
   if(!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
 async function apiDel(path){
-  const r = await fetch(FCI_API_URL+path,{method:'DELETE',headers:{'X-FCI-Key':FCI_API_KEY}});
+  const r = await fetch(FCI_API_URL+path,{method:'DELETE',headers:{..._sessionHeader()}});
   if(!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
@@ -3150,6 +3178,228 @@ function printWalkSheet() {
     + root.innerHTML
     + '</body></html>');
 
+function showAdminLoginFromFront(){
+  openAuthLogin('Sign in to admin or campaign account', null);
+}
+
+
+// ── GENUINE AUTH SYSTEM ───────────────────────────────────────────────────
+let _authLoginCallback = null;  // called after successful login
+
+function openAuthLogin(subtitle, callback){
+  _authLoginCallback = callback || null;
+  document.getElementById('auth-login-subtitle').textContent = subtitle || 'Admin or campaign account';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
+  document.getElementById('auth-login-err').style.display = 'none';
+  document.getElementById('auth-login-overlay').style.display = 'flex';
+  setTimeout(()=>document.getElementById('auth-email').focus(), 100);
+}
+
+function closeAuthLogin(){
+  document.getElementById('auth-login-overlay').style.display = 'none';
+  document.getElementById('auth-register-overlay').style.display = 'none';
+}
+
+async function doAuthLogin(){
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const err      = document.getElementById('auth-login-err');
+  const btn      = document.getElementById('auth-login-btn');
+  err.style.display = 'none';
+
+  if(!email || !password){ err.textContent='Enter email and password'; err.style.display='block'; return; }
+
+  btn.textContent = 'Signing in…'; btn.disabled = true;
+  try {
+    const r = await fetch(FCI_API_URL + '/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+    if(!r.ok){ err.textContent = data.error || 'Login failed'; err.style.display='block'; return; }
+
+    _saveSession({ token: data.token, user: data.user, expiresAt: data.expiresAt });
+    closeAuthLogin();
+
+    // Route based on role
+    if(data.user.role === 'admin'){
+      _setupAdminFromAuth(data.user);
+    } else if(data.user.role === 'candidate'){
+      await _setupCandidateFromAuth(data.user);
+    } else if(data.user.role === 'volunteer'){
+      await _setupVolunteerFromAuth(data.user);
+    }
+
+    if(_authLoginCallback){ _authLoginCallback(data.user); _authLoginCallback = null; }
+
+  } catch(e){
+    err.textContent = 'Connection error — try again';
+    err.style.display = 'block';
+  } finally {
+    btn.textContent = 'Sign In →'; btn.disabled = false;
+  }
+}
+
+function _setupAdminFromAuth(user){
+  // Set adminSession and open admin dash
+  adminSession  = true;
+  _adminEmail   = user.email;
+  closeAuthLogin();
+  // Close vol start screen if open
+  const volOl = document.getElementById('vol-start-overlay');
+  if(volOl) volOl.style.display = 'none';
+  openAdminDash();
+  toast('Welcome, ' + (user.name||user.email) + ' ✓');
+}
+
+async function _setupCandidateFromAuth(user){
+  if(!user.campaignId){ toast('No campaign assigned to this account', true); return; }
+  const cams = await loadCampaignsAsync();
+  const cam  = cams[user.campaignId];
+  if(!cam){ toast('Campaign not found', true); return; }
+  candidateSession = cam;
+  campaignFocusAreas = cam.focusAreas || {};
+  try{ sessionStorage.setItem('fci_active_candidate', JSON.stringify({id:cam.id})); }catch(e){}
+  const btn = document.getElementById('cand-btn');
+  if(btn){
+    btn.classList.add('logged-in');
+    document.getElementById('cand-btn-icon').textContent='🗳️';
+    document.getElementById('cand-btn-label').textContent=cam.name;
+  }
+  startContactSync(cam.id);
+  updateFocusBanner();
+  const volOl = document.getElementById('vol-start-overlay');
+  if(volOl) volOl.style.display = 'none';
+  openCandidateDash();
+  toast('Signed in as ' + cam.name + ' ✓');
+}
+
+async function _setupVolunteerFromAuth(user){
+  if(!user.campaignId){ toast('No campaign assigned to this account', true); return; }
+  const cams = await loadCampaignsAsync();
+  const cam  = cams[user.campaignId];
+  if(!cam){ toast('Campaign not found', true); return; }
+  // Launch volunteer in their assigned campaign
+  volunteerCampaignId = cam.id;
+  const volOl = document.getElementById('vol-start-overlay');
+  if(volOl) volOl.style.display = 'none';
+  _launchVolCampaign(cam, cam.focusAreas?.strategy || 'door');
+  toast('Welcome back, ' + (user.name||user.email) + ' ✓');
+}
+
+async function showAuthRegister(){
+  // Populate campaign dropdown
+  const sel = document.getElementById('auth-reg-campaign');
+  sel.innerHTML = '<option value="">— None —</option>';
+  try {
+    const r = await loadCampaignsAsync();
+    Object.values(r).forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  } catch(e){}
+  document.getElementById('auth-login-overlay').style.display = 'none';
+  document.getElementById('auth-register-overlay').style.display = 'flex';
+}
+
+async function doAuthRegister(){
+  const name       = document.getElementById('auth-reg-name').value.trim();
+  const email      = document.getElementById('auth-reg-email').value.trim();
+  const password   = document.getElementById('auth-reg-password').value;
+  const role       = document.getElementById('auth-reg-role').value;
+  const campaignId = document.getElementById('auth-reg-campaign').value || null;
+  const err        = document.getElementById('auth-reg-err');
+  err.style.display = 'none';
+
+  if(!email || !password){ err.textContent='Email and password required'; err.style.display='block'; return; }
+
+  try {
+    const r = await fetch(FCI_API_URL + '/api/auth/register', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json',..._sessionHeader()},
+      body: JSON.stringify({ email, password, name, role, campaignId })
+    });
+    const data = await r.json();
+    if(!r.ok){ err.textContent = data.error || 'Registration failed'; err.style.display='block'; return; }
+    closeAuthLogin();
+    toast('Account created for ' + email + ' (' + role + ') ✓');
+  } catch(e){
+    err.textContent = 'Connection error'; err.style.display = 'block';
+  }
+}
+
+async function authSignOut(){
+  try{
+    await fetch(FCI_API_URL + '/api/auth/logout', {
+      method:'POST', headers:{..._sessionHeader()}
+    });
+  }catch(e){}
+  _clearSession();
+  toast('Signed out ✓');
+}
+
+// Auto-restore session on load
+(function initAuthSession(){
+  if(_fciSession && _fciSession.user){
+    const u = _fciSession.user;
+    if(u.role === 'admin'){
+      adminSession = true; _adminEmail = u.email;
+    }
+  }
+})();
+
+
+// ── ADMIN CANVASS FUNCTIONS ───────────────────────────────
+function adminCreateCampaign(){
+  const name = document.getElementById('admin-cam-name').value.trim();
+  const seat = document.getElementById('admin-cam-seat').value.trim();
+  const err  = document.getElementById('admin-cam-err');
+  err.style.display = 'none';
+  if(!name){ err.textContent='Enter a campaign name'; err.style.display=''; return; }
+
+  const cams = loadCampaigns();
+  const id = campaignId(name);
+  if(cams[id]){ err.textContent='A campaign with that name already exists'; err.style.display=''; return; }
+
+  cams[id] = { id, name, seat: seat||'Admin Campaign', email: _adminEmail||'', pinHash:'', focusAreas:{}, message:'', adminCreated:true };
+  saveCampaigns(cams);
+  document.getElementById('admin-cam-name').value = '';
+  document.getElementById('admin-cam-seat').value = '';
+  renderAdminCampaignList();
+  toast('Campaign "' + name + '" created ✓');
+}
+
+function adminCanvassAs(camId){
+  const cams = loadCampaigns();
+  const cam = cams[camId];
+  if(!cam){ toast('Campaign not found', true); return; }
+
+  // Set up as if candidate logged in
+  candidateSession = cam;
+  campaignFocusAreas = cam.focusAreas || {};
+  try{ sessionStorage.setItem('fci_active_candidate', JSON.stringify({id:cam.id})); }catch(e){}
+
+  // Update header button
+  const btn = document.getElementById('cand-btn');
+  if(btn){
+    btn.classList.add('logged-in');
+    document.getElementById('cand-btn-icon').textContent='🗳️';
+    document.getElementById('cand-btn-label').textContent=cam.name;
+  }
+
+  startContactSync(cam.id);
+  updateFocusBanner();
+
+  // Close admin dash and open candidate dash
+  closeAdminDash();
+  openCandidateDash();
+  toast('Canvassing as "' + cam.name + '" ✓');
+}
+
+
 // ── CENTRAL COMMITTEE FILTER ─────────────────────────────
 let mailFilterCcPrecincts = [];  // array of precinctName keys
 
@@ -3218,7 +3468,7 @@ function skipVolInfo(){
   document.getElementById('vol-info-overlay').style.display = 'none';
   if(_volInfoPendingCallback){ _volInfoPendingCallback(); _volInfoPendingCallback = null; }
 }
-  win.document.close();
+
   // Copy QR canvas images into the new window as data URLs
   root.querySelectorAll('[id^="ws-qr-"]').forEach(wrap => {
     const canvas = wrap.querySelector('canvas');
@@ -5363,7 +5613,9 @@ async function volShowCampaigns(){
     noCams.style.display = '';
   } else {
     noCams.style.display = 'none';
-    listEl.innerHTML = keys.map(k => {
+    const visibleKeys = keys.filter(k => !cams[k].adminOnly);
+    if(!visibleKeys.length){ listEl.innerHTML=''; noCams.style.display=''; return; }
+    listEl.innerHTML = visibleKeys.map(k => {
       const cam = cams[k];
       const state = loadContactState(cam.id);
       const contactedCount = Object.values(state).filter(v=>v.contactStatus==='contacted').length;
@@ -5856,7 +6108,7 @@ async function adminLogin(){
   updateQrFab();
 }
 
-function adminLogout(){
+function adminLogout(){ _clearSession();
   adminSession = false;
   document.getElementById('admin-dash-overlay').style.display='none';
   updateQrFab();
@@ -5896,9 +6148,10 @@ async function renderAdminCampaignList(){
     const contacted = Object.values(state).filter(v=>v.contactStatus==='contacted').length;
     return `<div class="admin-cam-row">
       <div style="flex:1;">
-        <div style="font-size:14px;font-weight:600;color:var(--text);">${c.name}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);">${c.name}${c.adminOnly?'<span style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);border-radius:4px;padding:1px 6px;margin-left:6px;">🔒 Admin only</span>':''}</div>
         <div style="font-size:11px;color:var(--text-muted);">${c.email||'no email'} · ${contacted} contacted</div>
       </div>
+      <button onclick="adminCanvassAs('${c.id}')" style="background:var(--accent-bg);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🚶 Canvass</button>
       <button onclick="adminDeleteCampaign('${c.id}')" style="background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🗑 Delete</button>
       <button onclick="adminResetPin('${c.id}')" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:11px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🔑 Reset PIN</button>
     </div>`;
@@ -6575,7 +6828,74 @@ if('serviceWorker' in navigator){
     });
   }
 }
-</script>
+
+
+
+<!-- AUTH LOGIN OVERLAY -->
+<div id="auth-login-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:28px;">
+    <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">🔐 Sign In</div>
+    <div id="auth-login-subtitle" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;">Admin or campaign account</div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Email</label>
+      <input id="auth-email" type="email" placeholder="your@email.com" autocomplete="email"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Password</label>
+      <input id="auth-password" type="password" placeholder="Your password" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')doAuthLogin()"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+    </div>
+    <div id="auth-login-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:12px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeAuthLogin()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:13px;font-weight:600;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Cancel</button>
+      <button id="auth-login-btn" onclick="doAuthLogin()" style="flex:2;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Sign In →</button>
+    </div>
+    <div style="margin-top:14px;text-align:center;">
+      <button onclick="showAuthRegister()" style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;text-decoration:underline;">Create account (admin only)</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH REGISTER OVERLAY -->
+<div id="auth-register-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.9);align-items:center;justify-content:center;padding:16px;overflow-y:auto;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:420px;padding:28px;margin:auto;">
+    <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">➕ Create Account</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:22px;">Requires an existing admin login</div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Full Name</label>
+      <input id="auth-reg-name" type="text" placeholder="Jane Smith" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Email</label>
+      <input id="auth-reg-email" type="email" placeholder="their@email.com" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Password</label>
+      <input id="auth-reg-password" type="password" placeholder="Min 6 characters" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Role</label>
+      <select id="auth-reg-role" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+        <option value="volunteer">Volunteer</option>
+        <option value="candidate">Candidate / Campaign</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Campaign (for candidate/volunteer)</label>
+      <select id="auth-reg-campaign" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
+        <option value="">— None —</option>
+      </select>
+    </div>
+    <div id="auth-reg-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:12px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="document.getElementById('auth-register-overlay').style.display='none';document.getElementById('auth-login-overlay').style.display='flex';" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:13px;font-weight:600;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">← Back</button>
+      <button onclick="doAuthRegister()" style="flex:2;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Create Account →</button>
+    </div>
+  </div>
+</div>
 
 <!-- VOLUNTEER INFO COLLECTION OVERLAY -->
 <div id="vol-info-overlay" style="display:none;position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:16px;">
@@ -6652,6 +6972,11 @@ if('serviceWorker' in navigator){
     <div style="font-size:11px;color:var(--text-muted);text-align:center;">
       Candidate?&nbsp;
       <button onclick="volGoToCandidateLogin()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;text-decoration:underline;padding:0;">Log in to your dashboard →</button>
+    </div>
+    <div style="width:100%;max-width:420px;">
+      <button onclick="showAdminLoginFromFront()" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:10px;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+        ⚙️ Admin Login
+      </button>
     </div>
   </div>
 
@@ -6861,6 +7186,15 @@ if('serviceWorker' in navigator){
       <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:14px;">All Campaigns</div>
       <div id="admin-campaign-list"></div>
       <div id="admin-no-campaigns" style="display:none;font-size:13px;color:var(--text-muted);text-align:center;padding:20px 0;">No campaigns registered</div>
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:8px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:10px;">Create Admin Campaign</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input id="admin-cam-name" type="text" placeholder="Campaign name (e.g. FCI Canvass 2026)" class="cand-input" />
+          <input id="admin-cam-seat" type="text" placeholder="Description (e.g. General Canvass)" class="cand-input" />
+          <div id="admin-cam-err" style="display:none;font-size:11px;color:var(--danger);"></div>
+          <button onclick="adminCreateCampaign()" style="background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;">+ Create Campaign</button>
+        </div>
+      </div>
     </div>
 
     <!-- Admin password change -->
