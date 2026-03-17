@@ -271,7 +271,10 @@ async function getVoters(request, env) {
   const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const limit    = Math.min(parseInt(p.get('limit') || '60000'), 60000);
   const offset   = parseInt(p.get('offset') || '0');
-  const sql      = `SELECT data FROM voters ${whereSQL} LIMIT ? OFFSET ?`;
+  // Always exclude registered Republicans
+  where.push("party != 'R'");
+  const whereSQL2 = 'WHERE ' + where.join(' AND ');
+  const sql      = `SELECT data FROM voters ${whereSQL2} LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
   const result = await env.DB.prepare(sql).bind(...params).all();

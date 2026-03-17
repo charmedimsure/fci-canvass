@@ -1348,6 +1348,12 @@ return{data:data,meta:{fields:hdrs}};}};</script>
           <button class="mf-chip" data-donor-district="CD12" onclick="mfPickDonorDistrict(this)">CD-12 (Congress)</button>
         </div>
       </div>
+      <div class="mf-sub-panel show" id="mf-donor-org-panel" style="margin-top:8px;">
+        <div class="mf-label" style="margin-bottom:6px;">Filter by organization (optional — select none for all)</div>
+        <div id="mf-donor-org-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;">
+          <div style="font-size:11px;color:var(--text-muted);font-style:italic;">Loading organizations…</div>
+        </div>
+      </div>
     </div>
 
     <!-- LOCATION -->
@@ -1823,9 +1829,16 @@ function voterFromAPI(v){
   try { vnsArr = typeof v.vns === 'string' ? JSON.parse(v.vns) : (v.vns || []); } catch(e){}
 
   // Build voters array from vns: [{name:'First Last', ...}]
-  const votersArr = vnsArr.map(pair =>
-    Array.isArray(pair) ? { name: pair[0] + ' ' + pair[1] } : { name: String(pair) }
-  );
+  const votersArr = vnsArr.map(pair => {
+    if(Array.isArray(pair)){
+      const first = (pair[0] || '').trim();
+      const last  = (pair[1] || '').trim();
+      const name  = [first, last].filter(Boolean).join(' ');
+      return { name: name || 'Unknown' };
+    }
+    const s = String(pair || '').trim();
+    return { name: s || 'Unknown' };
+  }).filter(v => v.name && v.name !== 'Unknown' || vnsArr.length <= 1);
 
   return {
     ...v,
@@ -1880,7 +1893,7 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI);
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
     hideLoadingOverlay();
     return ALL_VOTERS_RAW;
   } catch(e){
@@ -2064,7 +2077,7 @@ async function selectArea(btn){
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -2372,7 +2385,7 @@ function applyFilters(voterList){
   // Score filter
   if(fa.score && fa.score !== 'all'){
     list = list.filter(v => {
-      const sc = v.scoreOverride ? v.score : autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted);
+      const sc = v.scoreOverride ? v.score : autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
       if(fa.score === 'strong') return sc === 'strong';
       if(fa.score === 'leans') return sc === 'strong' || sc === 'leans';
       return true;
@@ -2406,7 +2419,13 @@ function applyFilters(voterList){
     list = list.filter(v => v.donations && v.donations.length > 0);
   }
 
-  if(list.length < voterList.length){
+  // Always exclude Republican donors and registered Republicans from all routes
+  const beforeExclusion = list.length;
+  list = list.filter(v => !isRepDonor(v) && !isRegisteredRep(v));
+  if(beforeExclusion > list.length){
+    const excluded = beforeExclusion - list.length;
+    setTimeout(()=>toast(`${list.length.toLocaleString()} voters (${excluded} R donors/registered R excluded)`), 400);
+  } else if(list.length < voterList.length){
     setTimeout(()=>toast(`${list.length.toLocaleString()} voters match your selection`), 400);
   }
   return list;
@@ -2511,11 +2530,28 @@ function detectCols(headers){
   };
 }
 
-function autoScore(party, voting, lastPrimary, specialsVoted){
+// Returns true if voter has donated to Republican causes
+function isRepDonor(v){
+  return v.donations && v.donations.length > 0 &&
+    v.donations.some(d => d.lean === 'R');
+}
+
+// Returns true if voter is a registered Republican
+function isRegisteredRep(v){
+  return (v.party || '').toUpperCase() === 'R';
+}
+
+function autoScore(party, voting, lastPrimary, specialsVoted, donations){
   // party: 'D', 'R', or ''
   // voting: string number of generals voted in out of last 6 (e.g. '5')
   // lastPrimary: 'D', 'R', 'nonpartisan', or ''
   // specialsVoted: count of special elections voted in (max across household)
+
+  // Donors to Dem causes are strong supporters
+  // 'O' (Other) alone is not enough — must have at least one D donation
+  if(donations && donations.length && donations.some(d => d.lean === 'D')){
+    return 'strong';
+  }
 
   const isDem         = party === 'D';
   const isRep         = party === 'R';
@@ -2706,6 +2742,8 @@ function adaptiveThreshold(pts){
 }
 
 function clusterVoters(vl){
+  // Exclude Republican donors and registered Republicans before clustering
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v));
   const ROUTE_TARGET=15;
   const valid=vl.filter(v=>v.lat&&v.lon);
   const noCoord=vl.filter(v=>!v.lat||!v.lon);
@@ -3575,7 +3613,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI);
+      const apiVoters = (r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
       ALL_VOTERS_RAW = apiVoters;
       sheetVoters = ids.map(id =>
         voters.find(v => String(v.id) === id) ||
@@ -4414,7 +4452,7 @@ function showLabelHistory(dataIdx){
   });
 
   // Score
-  const score = v.scoreOverride ? v.score : autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted);
+  const score = v.scoreOverride ? v.score : autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
   const scoreColor = score==='strong'?'var(--strong)':score==='leans'?'var(--leans)':'var(--text-muted)';
   const scoreLabel = score==='strong'?'★ Strong':score==='leans'?'~ Leans':'? Unknown';
 
@@ -4563,6 +4601,7 @@ function openMailFilter(){
   document.getElementById('mf-age-min').value='';
   document.getElementById('mf-age-max').value='';
   document.querySelectorAll('.mf-chip').forEach(c=>c.classList.remove('sel'));
+  mailFilterDonorOrgs = [];
 
   // Show CC filter only for admins
   const ccSection = document.getElementById('mf-cc-section');
@@ -4584,8 +4623,9 @@ function mfToggleDonorSort(chk){
   // Show district sub-panel when donor sort is on
   const donorDistPanel = document.getElementById('mf-donor-district-panel');
   if(donorDistPanel) donorDistPanel.classList.toggle('show', mailSortDonors);
-  // Clear location selections when turning on donor sort
+  // Populate org chips and clear location selections when turning on donor sort
   if(mailSortDonors){
+    _populateDonorOrgChips();
     mailFilterLocs = [];
     document.querySelectorAll('.mf-chip[data-loc-field]').forEach(c=>c.classList.remove('sel'));
     const locTog = document.getElementById('mf-loc-toggle');
@@ -4596,6 +4636,40 @@ function mfToggleDonorSort(chk){
 }
 
 let _mailDonorDistrict = null; // separate from mailFilterDistrict — only used in donor sort mode
+let mailFilterDonorOrgs = []; // selected org names — empty = show all
+
+function mfToggleDonorOrg(btn){
+  btn.classList.toggle('sel');
+  mailFilterDonorOrgs = [...document.querySelectorAll('#mf-donor-org-chips .mf-chip.sel')]
+    .map(b => b.dataset.orgName);
+}
+
+function _populateDonorOrgChips(){
+  const container = document.getElementById('mf-donor-org-chips');
+  if(!container) return;
+
+  // Collect all unique committee names from loaded voters
+  const orgCounts = {};
+  (ALL_VOTERS_RAW || []).forEach(v => {
+    if(!v.donations || !v.donations.length) return;
+    v.donations.forEach(d => {
+      const org = (d.committee || '').trim();
+      if(org) orgCounts[org] = (orgCounts[org] || 0) + 1;
+    });
+  });
+
+  const orgs = Object.entries(orgCounts)
+    .sort((a, b) => b[1] - a[1]); // sort by frequency
+
+  if(!orgs.length){
+    container.innerHTML = '<div style="font-size:11px;color:var(--text-muted);font-style:italic;">No donor organizations found in current voter set</div>';
+    return;
+  }
+
+  container.innerHTML = orgs.map(([org, count]) =>
+    `<button class="mf-chip" data-org-name="${org.replace(/"/g,'&quot;')}" onclick="mfToggleDonorOrg(this)" title="${count} donor${count!==1?'s':''} in this area">${org} <span style="opacity:.5;font-size:10px;">(${count})</span></button>`
+  ).join('');
+}
 function mfPickDonorDistrict(btn){
   const already = btn.classList.contains('sel');
   document.querySelectorAll('[data-donor-district]').forEach(b=>b.classList.remove('sel'));
@@ -4720,8 +4794,13 @@ function applyMailFiltersToVoters(vlist){
       const dm = distMap[districtToCheck];
       if(dm && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
     }
-    // Donor filter — skip if no donation data (feature not yet wired)
+    // Donor filter
     if(mailSortDonors && !(v.donations && v.donations.length)) return false;
+    // Org filter — if specific orgs selected, voter must have donated to at least one
+    if(mailSortDonors && mailFilterDonorOrgs.length){
+      const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
+      if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
+    }
     // Ward filter
     if(!mailSortDonors && mailFilterWards.length){
       if(!mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
@@ -4730,6 +4809,8 @@ function applyMailFiltersToVoters(vlist){
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
       if(!mailFilterCcPrecincts.includes((v.precinctName||'').toUpperCase())) return false;
     }
+    // Always exclude Republican donors and registered Republicans
+    if(isRepDonor(v) || isRegisteredRep(v)) return false;
     return true;
   }).sort((a,b)=>{
     if(!mailSortDonors) return 0;
@@ -4755,7 +4836,7 @@ async function runMailCanvass(){
       if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
       if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -4848,8 +4929,11 @@ function _mqRebuildQuickPicks(){
   const filtered = _mqScoreFiltered();
   const totalIndiv = _mqTotalIndiv(filtered);
   const totalHH = filtered.length;
+  const modeLabel = _mqMailMode === 'household'
+    ? totalHH + ' households (' + totalIndiv + ' individual voters)'
+    : totalIndiv + ' individual voters across ' + totalHH + ' households';
   document.getElementById('mq-sub').textContent =
-    totalIndiv + ' voters across ' + totalHH + ' households match your selection. Choose how many postcards to generate.';
+    modeLabel + ' match your selection. Choose how many postcards to generate.';
   const picks = [30,60,90,120].filter(n=>n<totalIndiv);
   document.getElementById('mq-quick-btns').innerHTML = picks.map(n=>
     '<button class="mq-pick" onclick="mqPickQuick('+n+')" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">'+n+'</button>'
@@ -5244,7 +5328,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -6554,11 +6638,11 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI);
+      pool = (result.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI);
+        pool = (result2.voters || []).map(voterFromAPI).filter(v => (v.party||'').toUpperCase() !== 'R');
       }
     } catch(e) {
       chipsEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted);">Could not load precincts: ${e.message}</div>`;
