@@ -44,8 +44,9 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 <script>
 // ── EARLY CONSTANTS & WRAPPERS ────────────────────────────────
 // Defined before main script so all onclick handlers work immediately
-var FCI_API_URL = 'https://fci-canvass.fci-canvass.workers.dev';
-var FCI_API_KEY = 'ohiofcicanvass7312';
+// Use window. to avoid conflict with const declarations in main script
+window.FCI_API_URL = window.FCI_API_URL || 'https://fci-canvass.fci-canvass.workers.dev';
+window.FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
 
 // Thin shims for functions defined in main script
 function _safeCall(fn){ if(typeof window[fn]==='function') return window[fn].apply(window, Array.prototype.slice.call(arguments,1)); }
@@ -1924,8 +1925,8 @@ function showAuthRegister(){
 // FCI FieldMap v4 — Cloudflare Worker API Config
 // Set these after deploying your Worker (see SETUP.md)
 // ══════════════════════════════════════════════════════════════════
-const FCI_API_URL = 'https://fci-canvass.fci-canvass.workers.dev';
-const FCI_API_KEY = 'ohiofcicanvass7312';
+var FCI_API_URL = window.FCI_API_URL || 'https://fci-canvass.fci-canvass.workers.dev';
+var FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
 
 // ── AUTH SESSION ──────────────────────────────────────────────────────────
 let _fciSession = null;  // { token, user, expiresAt }
