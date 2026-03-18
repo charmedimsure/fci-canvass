@@ -991,7 +991,7 @@ _stubs.forEach(function(fn) {
               <span style="font-size:14px;font-weight:700;display:block;">By Mail</span>
               <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:3px;">Print address labels for all voters</span>
             </button>
-            <button class="mode-btn" id="mode-litdrop" onclick="pickMode('litdrop')">
+            <button class="mode-btn" id="mode-litdrop" onclick="pickMode('litdrop')" style="display:none;">
               <span style="font-size:28px;display:block;margin-bottom:6px;">📰</span>
               <span style="font-size:14px;font-weight:700;display:block;">Lit Drop</span>
               <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:3px;">Drop literature — all voters, walking route</span>
@@ -1000,6 +1000,9 @@ _stubs.forEach(function(fn) {
       </div>
 
       <!-- STEP 2: AREA -->
+      <div id="litdrop-option" style="display:none;padding:0 0 10px;">
+        <button onclick="pickMode('litdrop')" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">📰 Switch to Lit Drop instead</button>
+      </div>
       <div class="wizard-step" id="step-area-wrapper" style="display:none;">
 
       <!-- STEP 2 INNER: AREA -->
@@ -3690,6 +3693,29 @@ function saveAdminVoterEdits(){
 }
 
 
+
+// ── BACK BUTTON NAVIGATION ────────────────────────────────────────────────
+window.addEventListener('popstate', function(e){
+  const overlayIds = [
+    'voter-lookup-overlay','auth-login-overlay','auth-register-overlay',
+    'scan-overlay','sheet-review-overlay','mail-qty-overlay',
+    'modal-overlay','walk-sheet-overlay','mail-labels-overlay',
+    'mail-filter-overlay','admin-dash-overlay','cand-dash-overlay',
+    'cand-login-overlay','vol-start-overlay'
+  ];
+  for(const id of overlayIds){
+    const el = document.getElementById(id);
+    if(el && (el.style.display==='flex'||el.style.display==='block'||el.classList.contains('open'))){
+      el.style.display='none';
+      el.classList.remove('open');
+      history.pushState({fci:'base'},'');
+      return;
+    }
+  }
+  if(typeof maybeCollectVolInfo==='function') maybeCollectVolInfo(()=>showVolunteerStartScreen());
+});
+history.replaceState({fci:'base'},'');
+
 // ── ADMIN CANVASS FUNCTIONS ───────────────────────────────
 function adminCreateCampaign(){
   const name = document.getElementById('admin-cam-name').value.trim();
@@ -4826,6 +4852,20 @@ function showLabelHistory(dataIdx){
       }).join('')
     : `<div style="font-size:12px;color:var(--text-muted);">No individual voter data</div>`;
 
+  // Pre-compute donor HTML
+  let _donorHtml = '';
+  if(v.donations && v.donations.length){
+    const _dt = v.donations.reduce((s,d)=>s+(d.amount||0),0);
+    const _hD = v.donations.some(d=>d.lean==='D');
+    const _dT = v.donations.filter(d=>d.lean==='D').reduce((s,d)=>s+(d.amount||0),0);
+    const _ln = _hD?'D':v.donations.some(d=>d.lean==='R')?'R':'O';
+    const _lc = _ln==='D'?'var(--strong)':_ln==='R'?'var(--danger)':'var(--text-muted)';
+    const _ll = _ln==='D'?'Dem donor':_ln==='R'?'R donor':'Ind donor';
+    _donorHtml = '<div style="margin-top:8px;padding:7px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border);">'
+      + '<span style="font-size:11px;color:'+_lc+';font-weight:700;">💰 '+_ll+' — $'+_dt.toFixed(0)+' total</span>'
+      + (_hD&&_dT!==_dt?' <span style="font-size:11px;color:var(--text-muted);">($'+_dT.toFixed(0)+' to Dems)</span>':'')
+      + '</div>';
+  }
   content.innerHTML = `
     <div style="margin-bottom:14px;">
       <div style="font-size:14px;font-weight:700;color:var(--text);">${first} ${last}</div>
@@ -4853,29 +4893,7 @@ function showLabelHistory(dataIdx){
 
     ${v.notes ? `<div style="margin-bottom:10px;"><div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Notes</div><div style="font-size:12px;color:var(--text);font-style:italic;">${v.notes}</div></div>` : ''}
     ${v.contactStatus && v.contactStatus !== 'pending' ? `<div style="font-size:11px;color:var(--contacted);font-weight:600;">✓ ${v.contactStatus === 'contacted' ? 'Previously contacted' : v.contactStatus}${v.contactReason?' — '+v.contactReason:''}</div>` : ''}
-    ${v.donations && v.donations.length ? (() => {
-      const total = v.donations.reduce((s,d)=>s+(d.amount||0),0);
-      const leanColor = l => l==='D'?'#3b82f6':l==='R'?'#ef4444':'#8b5cf6';
-      const byPerson = {};
-      v.donations.forEach(d=>{
-        const k=d.voter||'Unknown';
-        if(!byPerson[k]) byPerson[k]={donations:[],total:0};
-        byPerson[k].donations.push(d);
-        byPerson[k].total+=d.amount||0;
-      });
-      return `<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
-        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">💰 FEC Donor — $${total.toFixed(0)} total</div>
-        ${Object.entries(byPerson).map(([name,info])=>`
-          <div style="margin-bottom:8px;">
-            <div style="font-size:12px;font-weight:700;color:var(--text);">${name}</div>
-            ${info.donations.map(d=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);padding:2px 0;border-bottom:1px solid var(--border);">
-              <span style="color:${leanColor(d.lean)};font-weight:700;width:12px;">${d.lean}</span>
-              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.committee}</span>
-              <span style="color:var(--text);font-weight:600;white-space:nowrap;">$${d.amount.toFixed(0)}</span>
-            </div>`).join('')}
-          </div>`).join('')}
-      </div>`;
-    })() : ''}
+    ${_donorHtml}
   `;
 
   panel.style.display = '';
@@ -5399,6 +5417,7 @@ function pickMode(mode){
   // Reset generate button label
   const _genBtn = document.getElementById('generate-btn');
   if(_genBtn) _genBtn.textContent = 'Generate Routes →';
+  var _ldOpt2=document.getElementById('litdrop-option'); if(_ldOpt2)_ldOpt2.style.display='none';
   // Reset area/race/nbhd steps
   wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
 
@@ -5426,10 +5445,11 @@ function pickMode(mode){
     document.getElementById('chip-mode').textContent = '✉️ By Mail';
     document.getElementById('change-mode').style.display = 'inline';
     document.getElementById('generate-btn').textContent = 'Choose Filters →';
-    // Show area step first — filter opens after area is selected
+    // Open filter first so volunteer can pre-select before choosing city
     document.getElementById('step-area-wrapper').style.display = 'block';
     wizOpen('step-area');
     updateGenerateBtn();
+    setTimeout(function(){ openMailFilter(); }, 300);
     return;
   }
 
@@ -5438,6 +5458,7 @@ function pickMode(mode){
   document.getElementById('chip-mode').style.display = 'inline';
   document.getElementById('chip-mode').textContent = '🚶 Door to Door';
   document.getElementById('change-mode').style.display = 'inline';
+  var _ldOpt=document.getElementById('litdrop-option'); if(_ldOpt)_ldOpt.style.display='';
   document.getElementById('generate-btn').textContent = 'Generate Routes →';
   // Show and reset the area step
   document.getElementById('step-area-wrapper').style.display = 'block';
@@ -6620,10 +6641,12 @@ function adminDeleteCampaign(camId){
   if(!cam) return;
   if(!confirm(`Permanently delete campaign "${cam.name}" and all its contact data?`)) return;
   delete cams[camId];
-  saveCampaigns(cams);
+  localStorage.setItem(CAND_STORE_KEY, JSON.stringify(cams));
   localStorage.removeItem(CONTACT_STORE_PREFIX + camId);
-  deleteCampaignRemote(camId);
+  deleteCampaignRemote(camId).catch(()=>{});
+  try{ const _sv=sessionStorage.getItem('fci_active_candidate'); if(_sv&&JSON.parse(_sv).id===camId) sessionStorage.removeItem('fci_active_candidate'); }catch(e){}
   renderAdminCampaignList();
+  if(typeof volShowCampaigns==='function') volShowCampaigns();
   toast(`Campaign "${cam.name}" deleted`);
 }
 
@@ -6715,7 +6738,10 @@ async function confirmDeleteCampaign(){
   // Delete campaign + contact data
   const cams = loadCampaigns();
   delete cams[id];
-  saveCampaigns(cams);
+  localStorage.setItem(CAND_STORE_KEY, JSON.stringify(cams));
+  deleteCampaignRemote(id).catch(()=>{});
+  try{ sessionStorage.removeItem('fci_active_candidate'); }catch(e){}
+  if(typeof volShowCampaigns==='function') volShowCampaigns();
   localStorage.removeItem(CONTACT_STORE_PREFIX + id);
   try{ sessionStorage.removeItem('fci_active_candidate'); }catch(e){}
 
