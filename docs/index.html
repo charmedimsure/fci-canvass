@@ -42,7 +42,22 @@ var data=rows.slice(1).map(function(r){
 return{data:data,meta:{fields:hdrs}};}};</script>
 
 <script>
-// Safe wrappers — defined early so onclick attributes work before main script loads
+// ── EARLY CONSTANTS & WRAPPERS ────────────────────────────────
+// Defined before main script so all onclick handlers work immediately
+var FCI_API_URL = 'https://fci-canvass.fci-canvass.workers.dev';
+var FCI_API_KEY = 'ohiofcicanvass7312';
+
+// Thin shims for functions defined in main script
+function _safeCall(fn){ if(typeof window[fn]==='function') return window[fn].apply(window, Array.prototype.slice.call(arguments,1)); }
+function toast(msg,err){ if(typeof _mainToast==='function') _mainToast(msg,err); else alert(msg); }
+function openAdminDash(){ _safeCall('_openAdminDashImpl'); }
+function _getHeader(){
+  try{
+    var s=JSON.parse(localStorage.getItem('fci_session')||'null');
+    if(s&&s.token&&new Date(s.expiresAt)>new Date()) return {'X-FCI-Key':FCI_API_KEY,'X-FCI-Session':s.token};
+  }catch(e){}
+  return {'X-FCI-Key':FCI_API_KEY};
+}
 function openVoterLookup(){
   if(typeof _voterLookupReady === 'function'){ _voterLookupReady(); }
   else {
@@ -61,6 +76,104 @@ function showAdminLoginFromFront(){
     ol.style.display = 'flex';
     setTimeout(function(){ document.getElementById('auth-email').focus(); }, 100);
   }
+}
+function doAuthLogin(){
+  var email = document.getElementById('auth-email').value.trim();
+  var password = document.getElementById('auth-password').value;
+  var err = document.getElementById('auth-login-err');
+  err.style.display = 'none';
+  if(!email || !password){ err.textContent='Enter email and password'; err.style.display='block'; return; }
+  var btn = document.getElementById('auth-login-btn');
+  btn.textContent='Signing in…'; btn.disabled=true;
+  fetch(FCI_API_URL+'/api/auth/login',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email:email,password:password})
+  }).then(function(r){ return r.json().then(function(d){ return {ok:r.ok,data:d}; }); })
+  .then(function(res){
+    btn.textContent='Sign In →'; btn.disabled=false;
+    if(!res.ok){ err.textContent=res.data.error||'Login failed'; err.style.display='block'; return; }
+    // Save session to localStorage directly
+    try{ localStorage.setItem('fci_session', JSON.stringify({token:res.data.token,user:res.data.user,expiresAt:res.data.expiresAt})); }catch(e){}
+    document.getElementById('auth-login-overlay').style.display='none';
+    var u=res.data.user;
+    if(u.role==='admin'){
+      // Set global flags — main script checks these on next operation
+      window._earlyAdminSession = {email:u.email, name:u.name||u.email};
+      var volOl=document.getElementById('vol-start-overlay');
+      if(volOl) volOl.style.display='none';
+      // Try to open admin dash — may work if main script loaded
+      if(typeof renderAdminCampaignList==='function'){ 
+        if(typeof adminSession!=='undefined') adminSession=true;
+        if(typeof _adminEmail!=='undefined') _adminEmail=u.email;
+        if(typeof openAdminDash==='function') window._openAdminDashImpl && window._openAdminDashImpl();
+        else document.getElementById('admin-dash-overlay').style.display='flex';
+      } else {
+        document.getElementById('admin-dash-overlay').style.display='flex';
+      }
+      var t=document.createElement('div'); t.id='_toast_tmp';
+      t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1e3a5f;color:#fff;padding:10px 20px;border-radius:8px;z-index:99999;font-size:14px;';
+      t.textContent='Welcome '+u.name||u.email+' ✓'; document.body.appendChild(t);
+      setTimeout(function(){t.remove();},3000);
+    } else {
+      alert('Signed in as '+u.email+' ('+u.role+')');
+    }
+  }).catch(function(e){
+    btn.textContent='Sign In →'; btn.disabled=false;
+    err.textContent='Connection error — check your network'; err.style.display='block';
+    console.error('Auth error:', e);
+  });
+}
+function doVoterLookup(){
+  var last = document.getElementById('vlookup-last').value.trim();
+  var first = document.getElementById('vlookup-first').value.trim();
+  var err = document.getElementById('vlookup-err');
+  var btn = document.getElementById('vlookup-btn');
+  err.style.display='none';
+  if(!last){ err.textContent='Last name is required'; err.style.display='block'; return; }
+  btn.textContent='Searching…'; btn.disabled=true;
+  var params = new URLSearchParams({last_name:last,limit:'50'});
+  if(first) params.set('first_name',first);
+  var headers = {};
+  Object.assign(headers, _getHeader());
+  fetch(FCI_API_URL+'/api/voters?'+params.toString(),{headers:headers})
+  .then(function(r){ return r.json(); })
+  .then(function(res){
+    btn.textContent='Search →'; btn.disabled=false;
+    var found=(res.voters||[]).filter(function(v){ return (v.party||'').toUpperCase()!=='R'; });
+    var resultsEl=document.getElementById('vlookup-results');
+    var countEl=document.getElementById('vlookup-count');
+    var listEl=document.getElementById('vlookup-list');
+    if(!found.length){ err.textContent='No voters found'; err.style.display='block'; resultsEl.style.display='none'; return; }
+    countEl.textContent=found.length+' voter'+(found.length!==1?'s':'')+' found';
+    window._vlookupVoters=found;
+    listEl.innerHTML=found.map(function(v){
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;" data-vlookup-id="'+v.id+'" onclick="vlookupOpenProfile(this.dataset.vlookupId)">'
+        +'<div style="font-weight:700;color:var(--text);">'+(v.name||v.n||'')+'</div>'
+        +'<div style="font-size:12px;color:var(--text-muted);">'+(v.address||v.a||'')+'</div>'
+        +'</div>';
+    }).join('');
+    resultsEl.style.display='block';
+  }).catch(function(e){
+    btn.textContent='Search →'; btn.disabled=false;
+    err.textContent='Search failed: '+e.message; err.style.display='block';
+  });
+}
+function vlookupOpenProfile(id){
+  document.getElementById('voter-lookup-overlay').style.display='none';
+  if(typeof openModal==='function') openModal(id);
+  else { window._pendingVoterLookupId=id; }
+}
+function closeVoterLookup(){
+  document.getElementById('voter-lookup-overlay').style.display='none';
+}
+function closeAuthLogin(){
+  document.getElementById('auth-login-overlay').style.display='none';
+  document.getElementById('auth-register-overlay').style.display='none';
+}
+function showAuthRegister(){
+  document.getElementById('auth-login-overlay').style.display='none';
+  document.getElementById('auth-register-overlay').style.display='flex';
 }
 </script>
 <link rel="manifest" href="manifest.json">
@@ -1839,7 +1952,7 @@ function _sessionHeader(){
   if(_fciSession && _fciSession.token) return {'X-FCI-Session': _fciSession.token};
   return {'X-FCI-Key': FCI_API_KEY};  // fallback to legacy key
 }
-_loadSession();
+try{ _loadSession(); }catch(e){ console.warn('Session load error:', e); }
 // ── CENTRAL COMMITTEE VACANCY DATA (rev 1/20/26) ──────────────────
 const CENTRAL_COMMITTEE = {"AMANDA A": {"vacant": true, "holder": ""}, "AMANDA B": {"vacant": true, "holder": ""}, "BALTIMORE VILLAGE A": {"vacant": true, "holder": ""}, "BALTIMORE VILLAGE B": {"vacant": false, "holder": "Lieber, Michael B"}, "BERNE A": {"vacant": true, "holder": ""}, "BERNE B": {"vacant": true, "holder": ""}, "BERNE C": {"vacant": true, "holder": ""}, "BERNE D": {"vacant": false, "holder": "Oatney, Michael Keith"}, "BLOOM A": {"vacant": false, "holder": "Shahan, Tyler Austin Zackery"}, "BLOOM B": {"vacant": false, "holder": "Bailey, Reed Michael"}, "BLOOM C": {"vacant": true, "holder": ""}, "BLOOM D": {"vacant": false, "holder": "Belli, Casey"}, "BLOOM E": {"vacant": false, "holder": "Johnson, Paul R"}, "BREMEN VILLAGE": {"vacant": false, "holder": "Kunkler, Mary Frances"}, "CLEARCREEK A": {"vacant": false, "holder": "Morris, Amy Lynn"}, "CLEARCREEK B": {"vacant": false, "holder": "Rigsby, Amy M"}, "COLUMBUS CITY A": {"vacant": true, "holder": ""}, "COLUMBUS CITY B": {"vacant": true, "holder": ""}, "COLUMBUS CITY C": {"vacant": true, "holder": ""}, "COLUMBUS CITY D": {"vacant": true, "holder": ""}, "COLUMBUS CITY E": {"vacant": false, "holder": "Ashley, Nancy Tilden"}, "COLUMBUS CITY F": {"vacant": false, "holder": "Kreis, Caroline Ann"}, "GREENFIELD A": {"vacant": true, "holder": ""}, "GREENFIELD B": {"vacant": false, "holder": "Scarmack, Michael Charles"}, "GREENFIELD C": {"vacant": false, "holder": "Tipple, Jeff Allen"}, "GREENFIELD D": {"vacant": false, "holder": "Kraner, Jeffrey Lee"}, "HOCKING A": {"vacant": true, "holder": ""}, "HOCKING B": {"vacant": false, "holder": "Williams, Robert L"}, "HOCKING C": {"vacant": false, "holder": "Hackleman Good, Leah Diane"}, "LANCASTER CITY 1-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 1-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 1-C": {"vacant": false, "holder": "Appel, Allison Arlene"}, "LANCASTER CITY 1-D": {"vacant": false, "holder": "Mcatee, Nancy Sue"}, "LANCASTER CITY 1-E": {"vacant": true, "holder": ""}, "LANCASTER CITY 2-A": {"vacant": false, "holder": "Weaver, Ryan Richard"}, "LANCASTER CITY 2-B": {"vacant": false, "holder": "Mattlin, Jay Alon"}, "LANCASTER CITY 2-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 2-D": {"vacant": false, "holder": "Blaisdell, Howard M"}, "LANCASTER CITY 3-A": {"vacant": false, "holder": "Culver, Kenneth David"}, "LANCASTER CITY 3-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 3-C": {"vacant": false, "holder": "Riggs, Neil Christopher"}, "LANCASTER CITY 3-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 3-E": {"vacant": false, "holder": "Brown, Cary James"}, "LANCASTER CITY 4-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 4-B": {"vacant": false, "holder": "Turner, Debra A"}, "LANCASTER CITY 4-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 4-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 5-A": {"vacant": false, "holder": "Everitt, Bryan Matthew"}, "LANCASTER CITY 5-B": {"vacant": true, "holder": ""}, "LANCASTER CITY 5-C": {"vacant": false, "holder": "Rosser, Melissa Dawn"}, "LANCASTER CITY 5-D": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-A": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-B": {"vacant": false, "holder": "Aldridge, Aimee L"}, "LANCASTER CITY 6-C": {"vacant": true, "holder": ""}, "LANCASTER CITY 6-D": {"vacant": true, "holder": ""}, "LIBERTY A": {"vacant": false, "holder": "Henley, Richard Downey"}, "LIBERTY B": {"vacant": true, "holder": ""}, "LIBERTY C": {"vacant": true, "holder": ""}, "LIBERTY D": {"vacant": true, "holder": ""}, "LITHOPOLIS VILLAGE A": {"vacant": true, "holder": ""}, "LITHOPOLIS VILLAGE B": {"vacant": false, "holder": "Daniels, Amber R"}, "MADISON A": {"vacant": true, "holder": ""}, "PICKERINGTON CITY A": {"vacant": true, "holder": ""}, "PICKERINGTON CITY B": {"vacant": true, "holder": ""}, "PICKERINGTON CITY C": {"vacant": true, "holder": ""}, "PICKERINGTON CITY D": {"vacant": false, "holder": "Potelicki, Christine E"}, "PICKERINGTON CITY E": {"vacant": false, "holder": "Gellert, David J"}, "PICKERINGTON CITY F": {"vacant": true, "holder": ""}, "PICKERINGTON CITY G": {"vacant": true, "holder": ""}, "PICKERINGTON CITY H": {"vacant": true, "holder": ""}, "PICKERINGTON CITY I": {"vacant": false, "holder": "Barletta, Anthony J"}, "PICKERINGTON CITY J": {"vacant": true, "holder": ""}, "PICKERINGTON CITY K": {"vacant": false, "holder": "Newman, Charles E"}, "PICKERINGTON CITY L": {"vacant": false, "holder": "Fuentes Jr, Lazaro G"}, "PICKERINGTON CITY M": {"vacant": true, "holder": ""}, "PICKERINGTON CITY N": {"vacant": true, "holder": ""}, "PICKERINGTON CITY O": {"vacant": true, "holder": ""}, "PICKERINGTON CITY P": {"vacant": false, "holder": "Bowden, Adrienne M"}, "PICKERINGTON CITY Q": {"vacant": true, "holder": ""}, "PLEASANT A": {"vacant": true, "holder": ""}, "PLEASANT B": {"vacant": true, "holder": ""}, "PLEASANT C": {"vacant": true, "holder": ""}, "PLEASANT D": {"vacant": true, "holder": ""}, "PLEASANT E": {"vacant": false, "holder": "Comer, David Cecil"}, "PLEASANT F": {"vacant": true, "holder": ""}, "RICHLAND EAST": {"vacant": false, "holder": "Mccandlish, Rachel Jane"}, "RICHLAND WEST": {"vacant": false, "holder": "Bugh Ii, David Arthur"}, "RUSHCREEK A": {"vacant": true, "holder": ""}, "RUSHCREEK B": {"vacant": true, "holder": ""}, "VIOLET A": {"vacant": false, "holder": "Lewis, Jennifer Lynn"}, "VIOLET B": {"vacant": false, "holder": "Meade, Darren Lyle"}, "VIOLET C": {"vacant": true, "holder": ""}, "VIOLET D": {"vacant": false, "holder": "Ward Tackett, Michele E"}, "VIOLET E": {"vacant": true, "holder": ""}, "VIOLET F": {"vacant": false, "holder": "Pinkins, Willie James"}, "VIOLET G": {"vacant": false, "holder": "Brown, Etha C"}, "VIOLET H": {"vacant": true, "holder": ""}, "VIOLET I": {"vacant": false, "holder": "Sottosanti, Karen Suzanne"}, "VIOLET J": {"vacant": true, "holder": ""}, "VIOLET K": {"vacant": false, "holder": "Low, Samantha Dawn Tong"}, "VIOLET L": {"vacant": true, "holder": ""}, "VIOLET M": {"vacant": true, "holder": ""}, "VIOLET N": {"vacant": false, "holder": "Riffle, Brett H"}, "VIOLET O": {"vacant": false, "holder": "Pransky, Brett Eric"}, "VIOLET P": {"vacant": false, "holder": "Vanmeter, Jeremy A"}, "VIOLET Q": {"vacant": false, "holder": "Parker, Jean Marie"}, "VIOLET R": {"vacant": true, "holder": ""}, "WALNUT A": {"vacant": false, "holder": "Whitaker, Velma Faye"}, "WALNUT B": {"vacant": true, "holder": ""}, "WALNUT C": {"vacant": false, "holder": "Keller, Teddy W"}, "WALNUT D": {"vacant": false, "holder": "Kinniard, James Brownie"}};
 
@@ -7245,6 +7358,20 @@ function exportCandidateCSV(){
 
 // ── LOAD CANDIDATE SESSION ON STARTUP ─────────────────────────
 // Check for previously saved candidate in sessionStorage (tab-scoped login)
+// Check if admin logged in via early script before main script loaded
+(function(){
+  if(window._earlyAdminSession){
+    adminSession = true;
+    _adminEmail = window._earlyAdminSession.email;
+    delete window._earlyAdminSession;
+    setTimeout(function(){
+      var volOl = document.getElementById('vol-start-overlay');
+      if(volOl) volOl.style.display='none';
+      openAdminDash();
+    }, 100);
+  }
+})();
+
 (async function initCandidateSession(){
   try{
     const saved = sessionStorage.getItem('fci_active_candidate');
