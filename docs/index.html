@@ -58,12 +58,18 @@ function _queueOrCall(fn, args) {
   }
 }
 
-// Stub every onclick function - just queues the call
+// Transparent stubs — forward to real impl if loaded, otherwise queue
 var _stubs = ['openVoterLookup','closeVoterLookup','doVoterLookup',
   'showAdminLoginFromFront','doAuthLogin','closeAuthLogin','showAuthRegister','doAuthRegister',
-  'vlookupOpenProfile','openAdminDash','toast','maybeCollectVolInfo','getVoterEdit'];
+  'vlookupOpenProfile','openAdminDash','toast','maybeCollectVolInfo','getVoterEdit',
+  'openModal','pickMode','selectArea','generateRoutes','closeModal'];
 _stubs.forEach(function(fn) {
-  window[fn] = function() { _queueOrCall(fn, Array.prototype.slice.call(arguments)); };
+  window[fn] = function() {
+    // Always look up the real function at call time
+    var real = window['_impl_' + fn];
+    if(real) { return real.apply(window, arguments); }
+    _earlyCallQueue.push([fn, Array.prototype.slice.call(arguments)]);
+  };
 });
 </script>
 <link rel="manifest" href="manifest.json">
@@ -3765,6 +3771,19 @@ async function adminCanvassAs(camId){
 
 
 window._mainScriptLoaded = true;
+// Re-expose all real implementations so stubs forward correctly
+var _implFns = ['openVoterLookup','closeVoterLookup','doVoterLookup',
+  'showAdminLoginFromFront','doAuthLogin','closeAuthLogin','showAuthRegister','doAuthRegister',
+  'vlookupOpenProfile','openAdminDash','toast','maybeCollectVolInfo','getVoterEdit',
+  'openModal','pickMode','selectArea','generateRoutes','closeModal'];
+_implFns.forEach(function(fn){
+  // Save real impl, then restore real function directly on window
+  if(typeof window[fn] === 'function'){
+    window['_impl_' + fn] = window[fn];
+    // Also re-assign so direct calls work
+    window[fn] = window[fn];
+  }
+});
 // Flush early call queue
 (function(){ if(window._earlyCallQueue){ window._earlyCallQueue.forEach(function(item){ try{ window[item[0]].apply(window, item[1]); }catch(e){} }); window._earlyCallQueue=[]; } })();
 // ── CENTRAL COMMITTEE FILTER ─────────────────────────────
