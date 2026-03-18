@@ -40,6 +40,29 @@ var data=rows.slice(1).map(function(r){
   hdrs.forEach(function(h,j){obj[h]=f[j]||'';});
   return obj;});
 return{data:data,meta:{fields:hdrs}};}};</script>
+
+<script>
+// Safe wrappers — defined early so onclick attributes work before main script loads
+function openVoterLookup(){
+  if(typeof _voterLookupReady === 'function'){ _voterLookupReady(); }
+  else {
+    var ol = document.getElementById('voter-lookup-overlay');
+    if(ol){ ol.style.display='flex'; }
+  }
+}
+function showAdminLoginFromFront(){
+  var ol = document.getElementById('auth-login-overlay');
+  if(ol){
+    var sub = document.getElementById('auth-login-subtitle');
+    if(sub) sub.textContent = 'Sign in to admin or campaign account';
+    document.getElementById('auth-email').value = '';
+    document.getElementById('auth-password').value = '';
+    document.getElementById('auth-login-err').style.display = 'none';
+    ol.style.display = 'flex';
+    setTimeout(function(){ document.getElementById('auth-email').focus(); }, 100);
+  }
+}
+</script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1117">
 <meta name="mobile-web-app-capable" content="yes">
