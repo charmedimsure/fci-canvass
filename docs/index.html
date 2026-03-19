@@ -1,4 +1,38 @@
-<!DOCTYPE html>
+<script>
+// ── EARLY DEFINITIONS ────────────────────────────────────────────
+// Ensures onclick handlers work even if main script hasn't finished loading.
+// Main script redefines all of these with full implementations.
+window.FCI_API_URL = window.FCI_API_URL || 'https://fci-canvass.fci-canvass.workers.dev';
+window.FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
+
+function _el(id){ return document.getElementById(id); }
+function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
+function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
+
+// Overlay openers
+function openVoterLookup(){ _show('voter-lookup-overlay'); setTimeout(function(){var e=_el('vlookup-last');if(e)e.focus();},100); }
+function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
+function showAdminLoginFromFront(){ var s=_el('auth-login-subtitle'); if(s)s.textContent='Sign in to admin or campaign account'; _el('auth-email').value=''; _el('auth-password').value=''; _el('auth-login-err').style.display='none'; _show('auth-login-overlay'); setTimeout(function(){_el('auth-email').focus();},100); }
+function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-overlay'); }
+function showAuthRegister(){ _hide('auth-login-overlay'); _show('auth-register-overlay'); }
+function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
+function closeAdminDash(){ _hide('admin-dash-overlay'); }
+function closeCandidateDash(){ _hide('cand-dash-overlay'); }
+function closeCandidateLogin(){ _hide('cand-login-overlay'); }
+function closeAllPopups(){ ['modal-overlay','walk-sheet-overlay','mail-labels-overlay','mail-qty-overlay','scan-overlay','sheet-review-overlay','voter-lookup-overlay','auth-login-overlay','auth-register-overlay'].forEach(_hide); }
+function showVolunteerStartScreen(){ _show('vol-start-overlay','flex'); }
+
+// These need the main script - safe no-ops until it loads
+function doVoterLookup(){
+  // Look up real implementation at call time to avoid circular reference
+  var real = window._realDoVoterLookup;
+  if(real) real();
+}
+function doAuthLogin(){ var r=window._realDoAuthLogin; if(r)r(); }
+function doAuthRegister(){ var r=window._realDoAuthRegister; if(r)r(); }
+function vlookupOpenProfile(id){ var r=window._realVlookupOpenProfile; if(r)r(id); }
+function toggleTheme(){ var r=window._realToggleTheme; if(r)r(); }
+</script><!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -41,37 +75,7 @@ var data=rows.slice(1).map(function(r){
   return obj;});
 return{data:data,meta:{fields:hdrs}};}};</script>
 
-<script>
-// ── EARLY STUBS (no duplicate function names) ─────────────────
-// These run before the main script - just set window vars, defer real calls
-window.FCI_API_URL = window.FCI_API_URL || 'https://fci-canvass.fci-canvass.workers.dev';
-window.FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
-window._earlyAdminSession = null;
 
-// Queue for calls made before main script loads
-window._earlyCallQueue = [];
-function _queueOrCall(fn, args) {
-  if (typeof window[fn] === 'function' && window._mainScriptLoaded) {
-    window[fn].apply(window, args);
-  } else {
-    window._earlyCallQueue.push([fn, args]);
-  }
-}
-
-// Transparent stubs — forward to real impl if loaded, otherwise queue
-var _stubs = ['openVoterLookup','closeVoterLookup','doVoterLookup',
-  'showAdminLoginFromFront','doAuthLogin','closeAuthLogin','showAuthRegister','doAuthRegister',
-  'vlookupOpenProfile','openAdminDash','toast','maybeCollectVolInfo','getVoterEdit',
-  'openModal','pickMode','selectArea','generateRoutes','closeModal'];
-_stubs.forEach(function(fn) {
-  window[fn] = function() {
-    // Always look up the real function at call time
-    var real = window['_impl_' + fn];
-    if(real) { return real.apply(window, arguments); }
-    _earlyCallQueue.push([fn, Array.prototype.slice.call(arguments)]);
-  };
-});
-</script>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d1117">
 <meta name="mobile-web-app-capable" content="yes">
@@ -211,7 +215,7 @@ _stubs.forEach(function(fn) {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 16px 80px;
+  padding: 76px 16px 80px;
   -webkit-overflow-scrolling: touch;
 }
 /* Focused route: rows scroll, header sticks */
@@ -1178,7 +1182,7 @@ _stubs.forEach(function(fn) {
 
       <!-- GENERATE -->
       <div id="step-generate" style="display:none;">
-        <button id="generate-btn" onclick="generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
+        <button id="generate-btn" onclick="canvassMode==='mail'?openMailFilter():generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
           Generate Routes →
         </button>
         <div id="generate-hint" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
@@ -3701,7 +3705,11 @@ function saveAdminVoterEdits(){
 
 
 // ── BACK BUTTON NAVIGATION ────────────────────────────────────────────────
+var _handlingPop = false;
 window.addEventListener('popstate', function(e){
+  if(_handlingPop) return;
+  _handlingPop = true;
+  setTimeout(function(){ _handlingPop = false; }, 200);
   const overlayIds = [
     'voter-lookup-overlay','auth-login-overlay','auth-register-overlay',
     'scan-overlay','sheet-review-overlay','mail-qty-overlay',
@@ -3714,7 +3722,6 @@ window.addEventListener('popstate', function(e){
     if(el && (el.style.display==='flex'||el.style.display==='block'||el.classList.contains('open'))){
       el.style.display='none';
       el.classList.remove('open');
-      history.pushState({fci:'base'},'');
       return;
     }
   }
@@ -3770,22 +3777,7 @@ async function adminCanvassAs(camId){
 }
 
 
-window._mainScriptLoaded = true;
-// Re-expose all real implementations so stubs forward correctly
-var _implFns = ['openVoterLookup','closeVoterLookup','doVoterLookup',
-  'showAdminLoginFromFront','doAuthLogin','closeAuthLogin','showAuthRegister','doAuthRegister',
-  'vlookupOpenProfile','openAdminDash','toast','maybeCollectVolInfo','getVoterEdit',
-  'openModal','pickMode','selectArea','generateRoutes','closeModal'];
-_implFns.forEach(function(fn){
-  // Save real impl, then restore real function directly on window
-  if(typeof window[fn] === 'function'){
-    window['_impl_' + fn] = window[fn];
-    // Also re-assign so direct calls work
-    window[fn] = window[fn];
-  }
-});
-// Flush early call queue
-(function(){ if(window._earlyCallQueue){ window._earlyCallQueue.forEach(function(item){ try{ window[item[0]].apply(window, item[1]); }catch(e){} }); window._earlyCallQueue=[]; } })();
+
 // ── CENTRAL COMMITTEE FILTER ─────────────────────────────
 let mailFilterCcPrecincts = [];  // array of precinctName keys
 
@@ -4168,7 +4160,7 @@ function openModal(id){
     scriptCard.style.display = 'none';
   }
 
-  const v=voters.find(x=>x.id===id); if(!v)return;
+  const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
   mId=id; mScore=v.score; mContact=v.contactStatus; mYard=v.yardSign; mOppYard=v.oppYard||false;
   document.getElementById('m-name').textContent=v.name;
   document.getElementById('m-addr').textContent=v.address;
@@ -5294,6 +5286,7 @@ async function runMailCanvass(){
 // ── Mail quantity picker ────────────────────────────────────────────────────
 let _mqPendingList = [];
 let _mqScore = 'all'; // 'all' | 'strong' | 'leans' | 'leansstrong'
+let _mqMailMode = 'household'; // 'household' | 'individual'
 
 function mqPickScore(btn){
   _mqScore = btn.dataset.score;
@@ -5464,11 +5457,10 @@ function pickMode(mode){
     document.getElementById('chip-mode').textContent = '✉️ By Mail';
     document.getElementById('change-mode').style.display = 'inline';
     document.getElementById('generate-btn').textContent = 'Choose Filters →';
-    // Open filter first so volunteer can pre-select before choosing city
+    // Show area step — user picks city, then clicks Generate → filter opens
     document.getElementById('step-area-wrapper').style.display = 'block';
     wizOpen('step-area');
     updateGenerateBtn();
-    setTimeout(function(){ openMailFilter(); }, 300);
     return;
   }
 
@@ -7329,6 +7321,15 @@ function exportCandidateCSV(){
 
 // ── SERVICE WORKER ──────────────────────────────────────────
 // Only register SW when served from a real deployment (not preview/blob/file)
+// ── SCRIPT FULLY LOADED ─────────────────────────────────
+window._mainScriptLoaded = true;
+window._realDoVoterLookup = doVoterLookup;
+window._realDoAuthLogin = doAuthLogin;
+window._realDoAuthRegister = doAuthRegister;
+window._realVlookupOpenProfile = vlookupOpenProfile;
+window._realToggleTheme = toggleTheme;
+
+
 if('serviceWorker' in navigator){
   const loc = window.location;
   const isDeployed = loc.protocol === 'https:' &&
