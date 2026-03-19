@@ -215,7 +215,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 76px 16px 80px;
+  padding: 100px 16px 80px;
   -webkit-overflow-scrolling: touch;
 }
 /* Focused route: rows scroll, header sticks */
@@ -1935,10 +1935,14 @@ function voterFromAPI(v){
   return {
     ...v,
     // Decode compressed field names
-    name:        v.name  || v.n  || '',
-    address:     v.address || v.a || '',
-    party:       v.party || v.pty || '',
-    ages:        v.ages  || '',
+    name:        v.name        || v.n   || '',
+    address:     v.address     || v.a   || '',
+    party:       v.party       || v.pty || '',
+    ages:        v.ages        || '',
+    yearsVoted:  v.yearsVoted  || v.yrs || v.voting || '',
+    voting:      v.voting      || v.yrs || '',
+    lastPrimary: v.lastPrimary || v.lp  || '',
+    specialsVoted: v.specialsVoted || v.sv || '',
     voters:      votersArr.length ? votersArr : (v.voters || []),
     // District fields already decoded by migration
     score: v.score || null,
@@ -4244,9 +4248,15 @@ function openModal(id){
     hhWrap.style.display = '';
     const spokeWith = v.spokeWith||[];
     hhList.innerHTML = v.voters.map((person, idx) => {
-      const name = Array.isArray(person) ? `${person[0]} ${person[1]}`
-                 : (person && typeof person === 'object' && person.name) ? person.name
-                 : String(person);
+      let name;
+      if(Array.isArray(person)){
+        name = [(person[0]||'').trim(), (person[1]||'').trim()].filter(Boolean).join(' ');
+      } else if(person && typeof person === 'object'){
+        name = person.name || person.n || [(person.first||'').trim(),(person.last||'').trim()].filter(Boolean).join(' ');
+      } else {
+        name = String(person||'').trim();
+      }
+      if(!name || name === 'undefined undefined' || name === 'undefined') name = 'Household member';
       const sel = spokeWith.includes(idx) ? ' spoke' : '';
       return `<button class="hh-chip${sel}" data-hhidx="${idx}" onclick="toggleSpokeWith(this)">${name}</button>`;
     }).join('');
@@ -4892,7 +4902,10 @@ function showLabelHistory(dataIdx){
 
     <div style="margin-bottom:12px;">
       <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Voting Record (recent)</div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">${voteDots}</div>
+      ${yearsArr.length === 0
+        ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:4px 0;">No voting history on file</div>'
+        : '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + voteDots + '</div>'
+      }
       ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}</div>` : ''}
       ${v.specialsVoted ? `<div style="font-size:11px;color:var(--text-muted);">${v.specialsVoted} special elections</div>` : ''}
     </div>
