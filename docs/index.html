@@ -58,7 +58,18 @@ function doVoterLookup(){
     });
 }
 function doAuthRegister(){ var r=window._realDoAuthRegister; if(r)r(); }
-function vlookupOpenProfile(id){ var r=window._realVlookupOpenProfile; if(r)r(id); else { _hide('voter-lookup-overlay'); if(typeof openModal==='function') openModal(id); } }
+function vlookupOpenProfile(id){
+  // Add voter to voters array so openModal can find it
+  if(window.voters && window._vlookupVoters){
+    var found = window._vlookupVoters.find(function(v){ return String(v.id)===String(id); });
+    if(found && !window.voters.find(function(v){ return String(v.id)===String(id); })){
+      if(typeof voterFromAPI==='function') found = voterFromAPI(found);
+      window.voters.push(found);
+    }
+  }
+  _hide('voter-lookup-overlay');
+  if(typeof openModal==='function') openModal(id);
+}
 function toggleTheme(){ var r=window._realToggleTheme; if(r)r(); }
 </script><!DOCTYPE html>
 <html lang="en">
@@ -7366,6 +7377,7 @@ function exportCandidateCSV(){
 // Only register SW when served from a real deployment (not preview/blob/file)
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
+window._realVlookupOpenProfile = vlookupOpenProfile;
 
 
 // Attach event listeners that need real implementations
