@@ -59,6 +59,7 @@ function doVoterLookup(){
 }
 function doAuthRegister(){ var r=window._realDoAuthRegister; if(r)r(); }
 function vlookupOpenProfile(id){
+  console.log("[VLOOKUP] id=",id,"_mainScriptLoaded=",window._mainScriptLoaded,"_appState=",!!window._appState,"_vlookupVoters=",window._vlookupVoters&&window._vlookupVoters.length);
   // Decode compressed voter fields and add to voters array
   var raw = (window._vlookupVoters||[]).find(function(v){ return String(v.id)===String(id); });
   if(raw){
@@ -93,24 +94,34 @@ function vlookupOpenProfile(id){
       notes: '',
       spokeWith: []
     }, raw);
-    // Add or replace in voters array
-    if(window.voters){
-      var existing = window.voters.findIndex(function(v){ return String(v.id)===String(id); });
-      if(existing >= 0) window.voters[existing] = decoded;
-      else window.voters.push(decoded);
-    }
+    // Store decoded voter for later retrieval
+    window._vlookupDecoded = window._vlookupDecoded || {};
+    window._vlookupDecoded[String(id)] = decoded;
   }
   _hide('voter-lookup-overlay');
-  // Wait for main script if needed, then open modal
-  if(typeof openModal==='function' && window._mainScriptLoaded){
-    openModal(id);
+  // Wait for main script, then inject voter and open modal
+  function _openWhenReady(){ console.log("[VLOOKUP] _openWhenReady: openModal=",typeof openModal,"_mainScriptLoaded=",window._mainScriptLoaded,"_appState=",!!window._appState,"_vlookupDecoded=",JSON.stringify(window._vlookupDecoded&&window._vlookupDecoded[String(id)]&&window._vlookupDecoded[String(id)].name));
+    if(typeof openModal==='function' && window._mainScriptLoaded && window._appState){
+      // Inject decoded voter into the voters array via _appState
+      var dec = window._vlookupDecoded && window._vlookupDecoded[String(id)];
+      if(dec) window._appState.replaceVoter(String(id), dec);
+      openModal(String(id));
+    } else if(typeof openModal==='function' && window._mainScriptLoaded){
+      // _appState not available - try direct injection via voters array accessor
+      var dec2 = window._vlookupDecoded && window._vlookupDecoded[String(id)];
+      if(dec2 && window._appState) window._appState.replaceVoter(String(id), dec2);
+      openModal(String(id));
+    }
+  }
+  if(window._mainScriptLoaded && typeof openModal==='function'){
+    _openWhenReady();
   } else {
     var _tries=0;
     var _wait=setInterval(function(){
       _tries++;
-      if(typeof openModal==='function' && window._mainScriptLoaded){
+      if(window._mainScriptLoaded && typeof openModal==='function'){
         clearInterval(_wait);
-        openModal(id);
+        _openWhenReady();
       } else if(_tries>50){ clearInterval(_wait); }
     },100);
   }
@@ -2090,7 +2101,9 @@ async function loadVotersFromAPI(focusAreas){
 
 
 // ── STATE ──────────────────────────────────────────────────
-let voters=[], walkClusters=[], mailList=[], map=null, markers={};
+let voters=[], walkClusters=[], mailList=[];
+window._appState = { replaceVoter: function(id,v){ var i=voters.findIndex(function(x){return String(x.id)===String(id);}); if(i>=0)voters[i]=v; else voters.push(v); } };
+var _unused1=0, _unused2=[], _unused3=[], map=null, markers={};
 let mId=null, mScore=null, mContact=null, mYard=false, mOppYard=false;
 let allFilter='all';
 let froMapInstance = null;
@@ -3195,7 +3208,6 @@ function bindRows(root){
     el.parentNode.replaceChild(fresh, el);
     // IDs are now MD5 hex strings — use as string, not number
     fresh.addEventListener('click',()=>{const id=fresh.dataset.id;if(id)openModal(id);});
-    fresh.addEventListener('touchend',(e)=>{e.preventDefault();const id=fresh.dataset.id;if(id)openModal(id);});
   });
 }
 
@@ -4235,6 +4247,7 @@ function toggleScriptCard(){
 }
 
 function openModal(id){
+  console.log("[MODAL] id=",id,"voters.length=",voters.length,"found=",voters.find(x=>String(x.id)===String(id))&&"YES");
   // Script card: show if campaign has a script
   const scriptCard = document.getElementById('m-script-card');
   const scriptText = document.getElementById('m-script-text');
