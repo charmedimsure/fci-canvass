@@ -22,14 +22,43 @@ function closeCandidateLogin(){ _hide('cand-login-overlay'); }
 function closeAllPopups(){ ['modal-overlay','walk-sheet-overlay','mail-labels-overlay','mail-qty-overlay','scan-overlay','sheet-review-overlay','voter-lookup-overlay','auth-login-overlay','auth-register-overlay'].forEach(_hide); }
 function showVolunteerStartScreen(){ _show('vol-start-overlay','flex'); }
 
-// These need the main script - safe no-ops until it loads
+// Full implementations available immediately
 function doVoterLookup(){
-  if(typeof _doVoterLookupImpl==='function') _doVoterLookupImpl();
-  else { var e=document.getElementById('vlookup-err'); if(e){e.textContent='Still loading, try again'; e.style.display='block';} }
+  var last  = (_el('vlookup-last')||{value:''}).value.trim();
+  var first = (_el('vlookup-first')||{value:''}).value.trim();
+  var err   = _el('vlookup-err');
+  var btn   = _el('vlookup-btn');
+  if(err) err.style.display='none';
+  if(!last){ if(err){err.textContent='Last name is required';err.style.display='block';} return; }
+  if(btn){ btn.textContent='Searching…'; btn.disabled=true; }
+  var headers = {'X-FCI-Key': window.FCI_API_KEY};
+  var url = window.FCI_API_URL+'/api/voters?last_name='+encodeURIComponent(last.toUpperCase())+'&limit=50'+(first?'&first_name='+encodeURIComponent(first.toUpperCase()):'');
+  fetch(url, {headers: headers})
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if(btn){ btn.textContent='Search →'; btn.disabled=false; }
+      var found=(res.voters||[]).filter(function(v){ return (v.party||'').toUpperCase()!=='R'; });
+      var resultsEl=_el('vlookup-results');
+      var countEl=_el('vlookup-count');
+      var listEl=_el('vlookup-list');
+      if(!found.length){ if(err){err.textContent='No voters found';err.style.display='block';} if(resultsEl)resultsEl.style.display='none'; return; }
+      if(countEl) countEl.textContent=found.length+' voter'+(found.length!==1?'s':'')+' found';
+      window._vlookupVoters=found;
+      if(listEl) listEl.innerHTML=found.map(function(v){
+        return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;" data-vlookup-id="'+(v.id||'')+'" onclick="vlookupOpenProfile(this.dataset.vlookupId)">'
+          +'<div style="font-weight:700;color:var(--text);">'+(v.name||v.n||'')+'</div>'
+          +'<div style="font-size:12px;color:var(--text-muted);">'+(v.address||v.a||'')+'</div>'
+          +'<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">'+(v.party==='D'?'Democrat':v.party||'NP')+'</div>'
+          +'</div>';
+      }).join('');
+      if(resultsEl) resultsEl.style.display='block';
+    }).catch(function(e){
+      if(btn){ btn.textContent='Search →'; btn.disabled=false; }
+      if(err){ err.textContent='Search failed: '+e.message; err.style.display='block'; }
+    });
 }
-function doAuthLogin(){ if(typeof _doAuthLoginImpl==='function') _doAuthLoginImpl(); }
 function doAuthRegister(){ var r=window._realDoAuthRegister; if(r)r(); }
-function vlookupOpenProfile(id){ var r=window._realVlookupOpenProfile; if(r)r(id); }
+function vlookupOpenProfile(id){ var r=window._realVlookupOpenProfile; if(r)r(id); else { _hide('voter-lookup-overlay'); if(typeof openModal==='function') openModal(id); } }
 function toggleTheme(){ var r=window._realToggleTheme; if(r)r(); }
 </script><!DOCTYPE html>
 <html lang="en">
@@ -1945,6 +1974,7 @@ function voterFromAPI(v){
     specialsVoted: v.specialsVoted || v.sv || '',
     voters:      votersArr.length ? votersArr : (v.voters || []),
     // District fields already decoded by migration
+    donations:    v.donations || [],
     score: v.score || null,
     scoreOverride: false,
     contactStatus: 'pending',
@@ -1999,7 +2029,7 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
     hideLoadingOverlay();
     return ALL_VOTERS_RAW;
   } catch(e){
@@ -2183,7 +2213,7 @@ async function selectArea(btn){
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -3368,7 +3398,7 @@ function closeAuthLogin(){
   document.getElementById('auth-register-overlay').style.display = 'none';
 }
 
-async function _doAuthLoginImpl(){
+async function doAuthLogin(){
   const email    = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
   const err      = document.getElementById('auth-login-err');
@@ -3534,7 +3564,7 @@ function closeVoterLookup(){
   document.getElementById('voter-lookup-overlay').style.display = 'none';
 }
 
-async function _doVoterLookupImpl(){
+async function doVoterLookup(){
   const last  = document.getElementById('vlookup-last').value.trim();
   const first = document.getElementById('vlookup-first').value.trim();
   const err   = document.getElementById('vlookup-err');
@@ -3953,7 +3983,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+      const apiVoters = (r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
       ALL_VOTERS_RAW = apiVoters;
       sheetVoters = ids.map(id =>
         voters.find(v => String(v.id) === id) ||
@@ -5233,7 +5263,7 @@ async function runMailCanvass(){
       if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
       if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -5735,7 +5765,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -7056,11 +7086,11 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+      pool = (result.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude);
+        pool = (result2.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => (v.party||'').toUpperCase() !== 'R' && !v.adminExclude && !isRepDonor(v));
       }
     } catch(e) {
       chipsEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted);">Could not load precincts: ${e.message}</div>`;
@@ -7336,10 +7366,22 @@ function exportCandidateCSV(){
 // Only register SW when served from a real deployment (not preview/blob/file)
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
-window._realDoAuthRegister = doAuthRegister;
-window._realVlookupOpenProfile = vlookupOpenProfile;
-window._realToggleTheme = toggleTheme;
 
+
+// Attach event listeners that need real implementations
+(function attachListeners(){
+  var vBtn = document.getElementById('vlookup-btn');
+  if(vBtn) vBtn.addEventListener('click', function(){ doVoterLookup(); });
+
+  var vLast = document.getElementById('vlookup-last');
+  if(vLast) vLast.addEventListener('keydown', function(e){ if(e.key==='Enter') doVoterLookup(); });
+
+  var vFirst = document.getElementById('vlookup-first');
+  if(vFirst) vFirst.addEventListener('keydown', function(e){ if(e.key==='Enter') doVoterLookup(); });
+
+  var aBtn = document.getElementById('auth-login-btn');
+  if(aBtn) aBtn.addEventListener('click', function(){ doAuthLogin(); });
+})();
 
 if('serviceWorker' in navigator){
   const loc = window.location;
@@ -7409,7 +7451,7 @@ if('serviceWorker' in navigator){
     <div id="auth-login-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:12px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>
     <div style="display:flex;gap:10px;">
       <button onclick="closeAuthLogin()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:13px;font-weight:600;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Cancel</button>
-      <button id="auth-login-btn" onclick="doAuthLogin()" style="flex:2;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Sign In →</button>
+      <button id="auth-login-btn" style="flex:2;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;">Sign In →</button>
     </div>
     <div style="margin-top:14px;text-align:center;">
       <button onclick="showAuthRegister()" style="background:none;border:none;color:var(--text-muted);font-size:11px;cursor:pointer;text-decoration:underline;">Create account (admin only)</button>
