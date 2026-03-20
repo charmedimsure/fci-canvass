@@ -307,11 +307,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   overflow: hidden;
 }
 /* All-routes view: scrollable wrapper around route cards */
-#tab-walk.active > #walk-scroll {
+#tab-walk.active > ##walk-scroll {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 100px 16px 80px;
+  padding: 120px 16px 80px;
   -webkit-overflow-scrolling: touch;
 }
 /* Focused route: rows scroll, header sticks */
@@ -327,7 +327,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   display: block !important;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 16px 80px;
+  padding: 120px 16px 80px;
   -webkit-overflow-scrolling: touch;
 }
 .route-card { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
@@ -394,7 +394,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .filter-btn:hover,.filter-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-bg); }
 
   /* MODAL */
-  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:4000; display:none; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:8000; display:none; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
   .modal-overlay.open { display:flex; }
   .modal { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:520px; margin:20px; box-shadow:0 20px 60px var(--shadow); overflow:hidden; animation:slideUp .2s ease; display:flex; flex-direction:column; max-height:92vh; }
   @keyframes slideUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
@@ -924,7 +924,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     .data-table td { font-size: 12px; padding: 10px 10px; }
 
     /* ── ALL VOTERS TAB ───────────────────────── */
-    #tab-all { padding: 12px; gap: 10px; }
+    #tab-all { padding: 120px 12px 12px; gap: 10px; }
     .all-controls {
       flex-wrap: nowrap;
       overflow-x: auto;
@@ -1773,37 +1773,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <textarea class="modal-textarea" id="m-notes" placeholder="Notes from the door knock…"></textarea>
       </div>
     </div>
-    <!-- Admin edit panel - shown only when admin is logged in -->
-    <div id="m-admin-panel" style="display:none;border-top:1px solid var(--border);margin:12px 0 0;padding:14px 0 0;">
-      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin Edit</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
-          <input id="m-admin-phone" type="tel" placeholder="(614) 555-0100"
-            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Email Address</label>
-          <input id="m-admin-email" type="email" placeholder="voter@email.com"
-            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Override Name</label>
-          <input id="m-admin-name" type="text" placeholder="Leave blank to keep original"
-            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
-        </div>
-        <div>
-          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Override Address</label>
-          <input id="m-admin-address" type="text" placeholder="Leave blank to keep original"
-            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);">
-          <input type="checkbox" id="m-admin-exclude" style="width:16px;height:16px;accent-color:var(--danger);cursor:pointer;">
-          <label for="m-admin-exclude" style="font-size:13px;color:var(--danger);font-weight:600;cursor:pointer;">Permanently exclude from all lists</label>
-        </div>
-        <button onclick="saveAdminVoterEdits()" style="background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;">Save Admin Changes</button>
-      </div>
-    </div>
+
     <!-- ADMIN EDIT SECTION -->
     <div id="m-admin-section" style="display:none;border-top:2px solid var(--accent);margin-top:14px;padding-top:14px;">
       <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin — Edit Voter Record</div>
@@ -2020,17 +1990,15 @@ function voterFromAPI(v){
   const votersArr = vnsArr.map(function(pair){
     if(Array.isArray(pair)){
       // vns format: [firstName, lastName, age?, bool?] OR [firstName, lastName]
-      var first = String(pair[0] || '').trim();
-      var last  = String(pair[1] || '').trim();
-      // Skip if first or last is a number (age field in wrong position)
-      if(!isNaN(first) && first !== '') first = '';
-      if(!isNaN(last)  && last  !== '') last  = '';
+      // pair[0]=first, pair[1]=last, pair[2]=age (number), pair[3]=presOnly (bool)
+      var first = (pair[0] !== null && pair[0] !== undefined && typeof pair[0] === 'string') ? pair[0].trim() : '';
+      var last  = (pair[1] !== null && pair[1] !== undefined && typeof pair[1] === 'string') ? pair[1].trim() : '';
       var name  = [first, last].filter(Boolean).join(' ');
-      return { name: name || 'Household member' };
+      return { name: name || '', age: pair[2] || null, presOnly: pair[3] || false };
     }
     var s = String(pair || '').trim();
-    return { name: s || 'Household member' };
-  }).filter(function(v){ return v.name && v.name !== 'Household member'; });
+    return { name: s || '' };
+  }).filter(function(v){ return v.name && v.name.length > 0; });
 
   return {
     ...v,
@@ -2108,7 +2076,7 @@ async function loadVotersFromAPI(focusAreas){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
     hideLoadingOverlay();
@@ -2302,7 +2270,7 @@ async function selectArea(btn){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
     } catch(e) {
@@ -2395,7 +2363,7 @@ function buildNeighborhoodStep(areaVoters){
   const totalVoters = areaVoters.length;
   body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Pick a precinct — street names shown as landmarks.</p>
     <button class="area-btn nbhd-btn" data-precinct="__all__" style="width:100%;margin-bottom:10px;background:var(--accent-bg);border:1px solid var(--accent);color:var(--accent);font-weight:700;padding:10px 14px;text-align:left;">
-      📬 Mail Entire City <span style="opacity:.6;font-weight:400;font-size:11px;margin-left:6px;">(${totalVoters} households)</span>
+      ${canvassMode==='mail'?'📬 Mail':'🚶 Canvass'} Entire City <span style="opacity:.6;font-weight:400;font-size:11px;margin-left:6px;">(${totalVoters} households)</span>
     </button>
     <div class="area-group">
       ${sorted.map(([name,info]) => {
@@ -2624,7 +2592,7 @@ function applyFilters(voterList){
 
   // Presidential-election-only voters filter
   // Check if voter ONLY voted in presidential years (2024,2020,2016,2012,2008)
-  if(fa.presOnly === '1'){
+  if(fa.presOnly === '1' || fa.presOnly === 1 || fa.presOnly === true){
     const presYrs = ['2024','2020','2016','2012','2008'];
     list = list.filter(v => {
       const yrs = (v.yearsVoted || v.yrs || v.voting || '').split(',').map(s=>s.trim()).filter(Boolean);
@@ -4070,7 +4038,7 @@ async function _handleScannedWalkSheet(qrData) {
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
       ALL_VOTERS_RAW = apiVoters;
@@ -5077,8 +5045,9 @@ function openMailFilter(){
   var scoreSection = document.getElementById('mf-score-section');
   var donorSection = document.getElementById('mf-donor-section');
   if(volunteerCampaignId){
+    // Campaign volunteers: hide both score and donor filters
     if(scoreSection) scoreSection.style.display = 'none';
-    if(donorSection) donorSection.style.display = '';
+    if(donorSection) donorSection.style.display = 'none';
   } else {
     if(scoreSection) scoreSection.style.display = '';
     if(donorSection) donorSection.style.display = '';
@@ -5370,7 +5339,7 @@ async function runMailCanvass(){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
     } catch(e) {
@@ -5882,7 +5851,7 @@ async function generateRoutes(){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
     } catch(e) {
@@ -7213,7 +7182,7 @@ async function buildPrecintChips(cityVal){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
       // Also try without CITY suffix in case it's stored differently
@@ -7227,7 +7196,7 @@ async function buildPrecintChips(cityVal){
     var yrs = (v.yearsVoted || v.yrs || v.voting || '');
     var recent = ['2024','2023','2022','2021','2020'];
     var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent && yrs.length > 0) return false; // has history but none recent
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
     return true;
   });
       }
