@@ -1478,11 +1478,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">📬 CD-12 Mail Coverage</div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px;line-height:1.5;">
       Congressional District 12 spans multiple counties. Outside Fairfield County, voters can only be reached <strong style="color:var(--text);">by mail</strong> — not door-to-door.<br><br>
-      Which counties would you like to include?
+      Which counties would you like to include? (Fairfield pre-selected)
     </div>
     <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Select counties (multi-select)</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;" id="cd12-county-chips">
-      <button class="mf-chip sel" data-cd12-county="23" onclick="toggleCd12County(this)" style="pointer-events:none;opacity:.7;">✓ Fairfield (always included)</button>
+      <button class="mf-chip sel" data-cd12-county="23" onclick="toggleCd12County(this)">Fairfield</button>
       <button class="mf-chip" data-cd12-county="21" onclick="toggleCd12County(this)">Delaware</button>
       <button class="mf-chip" data-cd12-county="42" onclick="toggleCd12County(this)">Knox</button>
       <button class="mf-chip" data-cd12-county="38" onclick="toggleCd12County(this)">Holmes</button>
@@ -2521,9 +2521,11 @@ function selectRace(btn){
     document.getElementById('chip-race').style.display='inline';
     document.getElementById('chip-race').textContent = '🏛 U.S. House — District 12';
     document.getElementById('change-race-btn').style.display='inline';
-    _cd12Counties = ['23'];
+    _cd12Counties = [];
     document.querySelectorAll('#cd12-county-chips [data-cd12-county]').forEach(c=>{
-      if(c.dataset.cd12County !== '23') c.classList.remove('sel');
+      // Pre-select Fairfield by default
+      if(c.dataset.cd12County === '23') c.classList.add('sel');
+      else c.classList.remove('sel');
     });
     document.getElementById('cd12-county-overlay').style.display = 'flex';
     return;
@@ -5976,9 +5978,11 @@ function _applyLockedRaceToMailWizard(){
 
   // For CD12 mail — show county picker; for others — go straight to filters
   if(field === 'congDist' && district === '12'){
-    _cd12Counties = ['23'];
+    _cd12Counties = [];
     document.querySelectorAll('#cd12-county-chips [data-cd12-county]').forEach(c=>{
-      if(c.dataset.cd12County !== '23') c.classList.remove('sel');
+      // Pre-select Fairfield by default
+      if(c.dataset.cd12County === '23') c.classList.add('sel');
+      else c.classList.remove('sel');
     });
     document.getElementById('cd12-county-overlay').style.display = 'flex';
   } else {
@@ -6042,11 +6046,11 @@ function toggleCd12County(btn){ btn.classList.toggle('sel'); }
 
 function confirmCd12Counties(){
   const chips = document.querySelectorAll('#cd12-county-chips [data-cd12-county]');
-  _cd12Counties = ['23'];
+  _cd12Counties = [];
   chips.forEach(c => {
-    const num = c.dataset.cd12County;
-    if(num !== '23' && c.classList.contains('sel')) _cd12Counties.push(num);
+    if(c.classList.contains('sel')) _cd12Counties.push(c.dataset.cd12County);
   });
+  if(!_cd12Counties.length){ toast('Select at least one county', true); return; }
   document.getElementById('cd12-county-overlay').style.display = 'none';
   _openSimpleMailFilter();
 }
