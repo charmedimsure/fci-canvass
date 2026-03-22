@@ -2123,11 +2123,8 @@ function _voterAPIParams(focusAreas){
     SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
     CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
   };
-  if(fa.district && fa.district !== 'all'){
-    const dm = distMap[fa.district];
-    // Don't filter congDist at DB level — congDist is empty on migrated records
-    if(dm && dm.field !== 'cong_dist') params[dm.field] = dm.value;
-  }
+  // District fields are empty in D1 (migration column mismatch) — don't filter at DB level
+  // applyFilters handles client-side district filtering
   // Fall back to wizard state if no campaign focus
   if(!params.st_house && !params.st_senate && !params.cong_dist){
     if(filterField === 'stHouse')   params.st_house   = filterDistrict;
@@ -5451,8 +5448,7 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        // District fields (stHouse/stSenate/congDist) are empty in D1 — fetch all county voters
-        // and let applyFilters handle district filtering client-side
+        // District fields are empty in D1 — fetch all county voters, filter client-side
         fetchParams.county_num = '23';
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
@@ -5461,9 +5457,7 @@ async function runMailCanvass(){
         else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
         else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
         else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
-        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
+        // Don't filter by district at DB level — fields empty in D1
       }
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
