@@ -2721,7 +2721,15 @@ function applyFilters(voterList){
 
   // CD12 mail: filter to selected counties only
   if(canvassMode === 'mail' && filterField === 'congDist' && filterDistrict === '12'){
-    list = list.filter(v => _cd12Counties.includes(String(v.countyNum || '').trim()));
+    // First ensure voter is actually in CD12 (handle both '12' and '12TH CONGRESSIONAL')
+    list = list.filter(v => {
+      const cd = String(v.congDist || v.cong_dist || '').toUpperCase();
+      if(cd && !cd.includes('12')) return false; // definitely not CD12
+      // If voter has no countyNum (pre-migration data), include them
+      const cn = String(v.countyNum || '').trim();
+      if(!cn) return true;
+      return _cd12Counties.includes(cn);
+    });
   }
 
   // Always exclude Republican donors, registered Republicans, and R-primary-only voters
@@ -5440,10 +5448,11 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
+        // For st_house/st_senate we can filter at DB level safely
         if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
         if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
-        // For statewide/federal races with no filterField, fetch whole county (no params = all)
+        // For congDist, stored values may vary ('12' vs '12TH CONGRESSIONAL') — fetch all, filter client-side
+        // For statewide/federal/local races with no filterField — fetch whole county
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
         else if(areaField === 'st_house') fetchParams.st_house = areaValue;
