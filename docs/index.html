@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <script>
 // ── EARLY DEFINITIONS ────────────────────────────────────────────
 // Ensures onclick handlers work even if main script hasn't finished loading.
@@ -1509,7 +1510,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- AGE -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-age-toggle">
           <input type="checkbox" id="mf-age-toggle" onchange="mfTogglePanel('age')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1529,7 +1530,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- PRESIDENTIAL GENERAL ONLY -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-pres-toggle">
           <input type="checkbox" id="mf-pres-toggle" onchange="mfTogglePresOnly(this)">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1541,7 +1542,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- SORT BY DONORS -->
     <div class="mf-section" id="mf-donor-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-donor-toggle">
           <input type="checkbox" id="mf-donor-toggle" onchange="mfToggleDonorSort(this)">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1568,7 +1569,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- LOCATION -->
     <div class="mf-section" id="mf-loc-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-loc-toggle">
           <input type="checkbox" id="mf-loc-toggle" onchange="mfTogglePanel('loc')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1588,7 +1589,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- STATE HOUSE DISTRICT -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-district-toggle">
           <input type="checkbox" id="mf-district-toggle" onchange="mfTogglePanel('district')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1607,7 +1608,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- CITY COUNCIL WARD -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-ward-toggle">
           <input type="checkbox" id="mf-ward-toggle" onchange="mfTogglePanel('ward')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1633,7 +1634,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- CENTRAL COMMITTEE DISTRICT -->
     <div class="mf-section" id="mf-cc-section" style="display:none;">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-cc-toggle">
           <input type="checkbox" id="mf-cc-toggle" onchange="mfTogglePanel('cc')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -5446,11 +5447,9 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        // For st_house/st_senate we can filter at DB level safely
         if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
         if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-        // For congDist, stored values may vary ('12' vs '12TH CONGRESSIONAL') — fetch all, filter client-side
-        // For statewide/federal/local races with no filterField — fetch whole county
+        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict; // worker now uses LIKE match
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
         else if(areaField === 'st_house') fetchParams.st_house = areaValue;
