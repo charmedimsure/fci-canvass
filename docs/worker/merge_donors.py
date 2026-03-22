@@ -19,7 +19,7 @@ import requests
 API_URL   = os.environ.get('FCI_API_URL',   'https://fci-canvass.fci-canvass.workers.dev')
 API_KEY   = os.environ.get('FCI_API_KEY',   'ohiofcicanvass7312')
 ADMIN_KEY = os.environ.get('FCI_ADMIN_KEY', '2026ad#min#oh#fci#LA')
-BATCH     = 100
+BATCH     = 20  # Smaller batches to avoid Cloudflare payload limits
 # ──────────────────────────────────────────────────────────────────────────────
 
 HEADERS = {
@@ -38,7 +38,10 @@ def norm_addr(s):
 
 # Load the donor map built by the analysis script
 print("Loading donor map...")
-with open('/home/claude/donor_map.json') as f:
+# donor_map.json should be in the same folder as this script
+import os
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_script_dir, 'donor_map.json')) as f:
     raw_map = json.load(f)
 
 # Convert string keys back to tuples
@@ -104,9 +107,20 @@ for v in all_voters:
     donations = donor_map.get(key)
 
     if donations:
-        # Merge donations into voter data
+        # Summarize donations: dedupe by committee, keep lean + total per committee
+        # Cap at 20 entries to keep payload small
+        by_committee = {}
+        for d in donations:
+            k = d['committee'][:50]  # truncate long names
+            if k not in by_committee:
+                by_committee[k] = {'voter': d['voter'], 'committee': k, 'lean': d['lean'], 'amount': 0}
+            by_committee[k]['amount'] += d.get('amount', 0)
+        
+        # Sort by amount desc, keep top 20
+        summarized = sorted(by_committee.values(), key=lambda x: -x['amount'])[:20]
+        
         v_data = dict(v)
-        v_data['donations'] = donations
+        v_data['donations'] = summarized
         updated_voters.append(v_data)
         matched += 1
 
@@ -127,10 +141,18 @@ for i in range(0, len(updated_voters), BATCH):
         json={'voters': chunk, 'replace': False}
     )
     if not r.ok:
-        print(f"Error pushing batch {i//BATCH}: {r.status_code} {r.text[:200]}")
+        # Retry once with smaller chunk on error
+        print(f"  Batch {i//BATCH} failed ({r.status_code}), retrying in halves...")
+        half = len(chunk) // 2
+        for sub in [chunk[:half], chunk[half:]]:
+            if not sub: continue
+            r2 = requests.post(f"{API_URL}/api/admin/load-voters",
+                headers=admin_headers, json={'voters': sub, 'replace': False})
+            if not r2.ok:
+                print(f"  Sub-batch error: {r2.status_code} {r2.text[:100]}")
     else:
         print(f"  Pushed {min(i+BATCH, len(updated_voters))}/{len(updated_voters)}...", end='\r')
-    time.sleep(0.1)
+    time.sleep(0.2)
 
 print(f"\n✅ Done! {matched} voter records updated with donation history.")
 print("Lean breakdown:")
