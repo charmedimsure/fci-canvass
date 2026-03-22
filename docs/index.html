@@ -2721,13 +2721,11 @@ function applyFilters(voterList){
 
   // CD12 mail: filter to selected counties only
   if(canvassMode === 'mail' && filterField === 'congDist' && filterDistrict === '12'){
-    // First ensure voter is actually in CD12 (handle both '12' and '12TH CONGRESSIONAL')
     list = list.filter(v => {
       const cd = String(v.congDist || v.cong_dist || '').toUpperCase();
       if(cd && !cd.includes('12')) return false; // definitely not CD12
-      // If voter has no countyNum (pre-migration data), include them
-      const cn = String(v.countyNum || '').trim();
-      if(!cn) return true;
+      // Default missing countyNum to '23' (Fairfield) — all currently migrated voters are Fairfield
+      const cn = String(v.countyNum || '23').trim();
       return _cd12Counties.includes(cn);
     });
   }
