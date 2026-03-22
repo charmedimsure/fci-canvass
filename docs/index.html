@@ -2134,6 +2134,8 @@ function _voterAPIParams(focusAreas){
     if(filterField === 'congDist')  params.cong_dist  = filterDistrict;
   }
   if(fa.city && fa.city !== 'all') params.municipality = fa.city.toUpperCase() + ' CITY';
+  // Always restrict to Fairfield County unless a cross-county district is set
+  if(!params.st_senate && !params.cong_dist) params.county_num = '23';
   return params;
 }
 
@@ -2339,6 +2341,7 @@ async function selectArea(btn){
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
+      else fetchParams.county_num = '23'; // no specific area = whole Fairfield County only
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;

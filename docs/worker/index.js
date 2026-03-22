@@ -263,7 +263,8 @@ async function getVoters(request, env) {
 
   if (p.get('st_house'))     { where.push('st_house = ?');     params.push(p.get('st_house')); }
   if (p.get('st_senate'))    { where.push('st_senate = ?');    params.push(p.get('st_senate')); }
-  if (p.get('cong_dist'))    { where.push('cong_dist = ?');    params.push(p.get('cong_dist')); }
+  if (p.get('cong_dist'))    { where.push("cong_dist LIKE ?"); params.push('%' + p.get('cong_dist').replace(/[^0-9]/g,'') + '%'); }
+  if (p.get('county_num'))   { where.push('county_num = ?');    params.push(p.get('county_num')); }
   if (p.get('municipality')) { where.push('municipality = ?'); params.push(p.get('municipality')); }
   if (p.get('township'))     { where.push('township = ?');     params.push(p.get('township')); }
   if (p.get('village'))      { where.push('village = ?');      params.push(p.get('village')); }
@@ -296,7 +297,8 @@ async function countVoters(request, env) {
 
   if (p.get('st_house'))     { where.push('st_house = ?');     params.push(p.get('st_house')); }
   if (p.get('st_senate'))    { where.push('st_senate = ?');    params.push(p.get('st_senate')); }
-  if (p.get('cong_dist'))    { where.push('cong_dist = ?');    params.push(p.get('cong_dist')); }
+  if (p.get('cong_dist'))    { where.push("cong_dist LIKE ?"); params.push('%' + p.get('cong_dist').replace(/[^0-9]/g,'') + '%'); }
+  if (p.get('county_num'))   { where.push('county_num = ?');    params.push(p.get('county_num')); }
   if (p.get('municipality')) { where.push('municipality = ?'); params.push(p.get('municipality')); }
   if (p.get('township'))     { where.push('township = ?');     params.push(p.get('township')); }
   if (p.get('village'))      { where.push('village = ?');      params.push(p.get('village')); }
@@ -409,13 +411,15 @@ async function loadVoters(request, env) {
   const body   = await request.json();
   const voters = body.voters;
   if (!Array.isArray(voters) || !voters.length) return err('voters array required');
+  // Ensure county_num column exists (safe to run repeatedly)
+  try { await env.DB.prepare("ALTER TABLE voters ADD COLUMN county_num TEXT DEFAULT '23'").run(); } catch(e) {}
   if (body.replace) await env.DB.prepare('DELETE FROM voters').run();
 
   const stmt = env.DB.prepare(`
     INSERT OR REPLACE INTO voters
       (id, data, lat, lon, municipality, township, village,
-       precinct, precinct_name, st_house, st_senate, cong_dist, ward, score, party)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       precinct, precinct_name, st_house, st_senate, cong_dist, ward, score, party, county_num)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `);
 
   const BATCH = 100;
@@ -436,6 +440,7 @@ async function loadVoters(request, env) {
       (v.ward         || '').toUpperCase(),
       v.score  || '',
       v.party  || '',
+      v.countyNum || '23',
     ));
     await env.DB.batch(batch);
     count += chunk.length;
