@@ -2135,8 +2135,6 @@ function _voterAPIParams(focusAreas){
     if(filterField === 'congDist')  params.cong_dist  = filterDistrict;
   }
   if(fa.city && fa.city !== 'all') params.municipality = fa.city.toUpperCase() + ' CITY';
-  // Always restrict to Fairfield County unless a cross-county district is set
-  if(!params.st_senate && !params.cong_dist) params.county_num = '23';
   return params;
 }
 
@@ -2342,7 +2340,7 @@ async function selectArea(btn){
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
-      else fetchParams.county_num = '23'; // no specific area = whole Fairfield County only
+      // else: no area filter — fetch all voters (worker filters by party != R)
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
@@ -4956,7 +4954,9 @@ function updateGenerateBtn(){
   }
   if(filterField && filterDistrict){
     const want = norm(filterDistrict);
-    list = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    const filtered = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    // Only apply if it actually matches some voters — if district fields are empty in D1, skip filter
+    if(filtered.length > 0) list = filtered;
   }
 
   if(!hasNbhd){
@@ -5451,10 +5451,8 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
-        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-        // Don't filter congDist at DB level — congDist is empty on migrated records
-        // Fetch by county instead and filter client-side
+        // District fields (stHouse/stSenate/congDist) are empty in D1 — fetch all county voters
+        // and let applyFilters handle district filtering client-side
         fetchParams.county_num = '23';
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
