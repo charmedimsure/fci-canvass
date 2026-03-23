@@ -4368,8 +4368,9 @@ function openModal(id){
     contactInfoEl.style.cssText = 'font-size:12px;color:var(--fci-sky);margin-top:3px;';
     document.getElementById('m-addr').insertAdjacentElement('afterend', contactInfoEl);
   }
-  const phone = v.phone || getVoterEdit(v.id).phone || '';
-  const email = v.email || getVoterEdit(v.id).email || '';
+  const _gve = (typeof getVoterEdit === 'function') ? getVoterEdit : function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
+  const phone = v.phone || _gve(v.id).phone || '';
+  const email = v.email || _gve(v.id).email || '';
   const contactParts = [];
   if(phone) contactParts.push('📞 ' + phone);
   if(email) contactParts.push('✉️ ' + email);
