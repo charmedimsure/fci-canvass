@@ -579,7 +579,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   /* Mail labels overlay */
   #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:3000; display:none; flex-direction:column; }
   #mail-labels-overlay.open { display:flex; }
-  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; flex-wrap:wrap; }
   #mail-labels-overlay .mlo-title { flex:1; font-size:15px; font-weight:700; color:var(--text); }
   #mail-labels-overlay .mlo-sub { font-size:11px; color:var(--text-muted); }
   #mail-labels-overlay .mlo-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; background:#f5f5f5; padding:16px; }
