@@ -532,7 +532,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .mode-btn.selected { border-color:var(--accent); background:var(--accent-bg); color:var(--accent); }
   /* Route picker overlay */
   /* Mail filter overlay */
-  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:3500; display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:8500; display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; box-sizing:border-box; width:100%; }
   #mail-filter-overlay.open { display:flex; }
   .mf-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:480px; max-height:85vh; overflow-y:scroll; -webkit-overflow-scrolling:touch; padding:24px; }
   .mf-title { font-size:17px; font-weight:700; margin-bottom:4px; }
@@ -1438,6 +1438,15 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;">📬 How many postcards?</div>
     <div id="mq-sub" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;"></div>
 
+    <!-- Household vs Individual toggle -->
+    <div style="margin-bottom:20px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px;">Label type</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button id="mq-mode-hh" onclick="mqSetMode('household',this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:10px 8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🏠 By Household<div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px;">One label per address</div></button>
+        <button id="mq-mode-ind" onclick="mqSetMode('individual',this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:10px 8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">👤 By Individual<div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px;">One label per voter</div></button>
+      </div>
+    </div>
+
     <!-- Score filter -->
     <div style="margin-bottom:20px;">
       <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px;">Sort / Filter by voter score</label>
@@ -1473,7 +1482,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 
 <!-- MAIL FILTER OVERLAY -->
 <!-- CD12 COUNTY SELECTION OVERLAY -->
-<div id="cd12-county-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);">
+<div id="cd12-county-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;width:100%;box-sizing:border-box;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 22px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;">
     <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">📬 CD-12 Mail Coverage</div>
     <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px;line-height:1.5;">
@@ -3018,8 +3027,8 @@ async function geocodeStreet(query){
 }
 
 async function geocodeAll(vl){
-  // Coordinates are pre-embedded — no geocoding needed at runtime.
-  // Voters without coords (5.7%) go to mail list automatically via clustering.
+  // Coords are baked in by migrate_csv.py via Census Geocoder.
+  // Voters without coords go to mail list automatically via clustering.
   const missing = vl.filter(v => !v.lat || !v.lon).length;
   if(missing > 0) console.log(`${missing} voters have no coords → mail list`);
 }
@@ -5090,9 +5099,17 @@ function showLabelHistory(dataIdx){
     const _ln = _hD?'D':v.donations.some(d=>d.lean==='R')?'R':'O';
     const _lc = _ln==='D'?'var(--strong)':_ln==='R'?'var(--danger)':'var(--text-muted)';
     const _ll = _ln==='D'?'Dem donor':_ln==='R'?'R donor':'Ind donor';
+    const _orgLines = v.donations.map(d =>
+      '<div style="display:flex;justify-content:space-between;gap:6px;font-size:10px;color:var(--text-muted);padding:2px 0;border-bottom:1px solid var(--border);">'+
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+d.committee+'</span>'+
+      '<span style="white-space:nowrap;font-weight:600;color:'+(d.lean==='D'?'var(--strong)':d.lean==='R'?'var(--danger)':'var(--text-muted)')+';">$'+d.amount.toFixed(0)+'</span>'+
+      '</div>'
+    ).join('');
     _donorHtml = '<div style="margin-top:8px;padding:7px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border);">'
-      + '<span style="font-size:11px;color:'+_lc+';font-weight:700;">💰 '+_ll+' — $'+_dt.toFixed(0)+' total</span>'
-      + (_hD&&_dT!==_dt?' <span style="font-size:11px;color:var(--text-muted);">($'+_dT.toFixed(0)+' to Dems)</span>':'')
+      + '<div style="font-size:11px;color:'+_lc+';font-weight:700;margin-bottom:4px;">💰 '+_ll+' — $'+_dt.toFixed(0)+' total'
+      + (_hD&&_dT!==_dt?' <span style="font-size:10px;color:var(--text-muted);font-weight:400;">($'+_dT.toFixed(0)+' to Dems)</span>':'')
+      + '</div>'
+      + _orgLines
       + '</div>';
   }
   content.innerHTML = `
@@ -5553,6 +5570,17 @@ let _mqPendingList = [];
 let _mqScore = 'all'; // 'all' | 'strong' | 'leans' | 'leansstrong'
 let _mqMailMode = 'household'; // 'household' | 'individual'
 
+function mqSetMode(mode, btn){
+  _mqMailMode = mode;
+  const hhBtn  = document.getElementById('mq-mode-hh');
+  const indBtn = document.getElementById('mq-mode-ind');
+  const active = 'background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;';
+  const inactive = 'background:var(--surface2);border:1.5px solid var(--border);color:var(--text);';
+  if(hhBtn)  hhBtn.style.cssText  = hhBtn.style.cssText.replace(/background:[^;]+;border:[^;]+;color:[^;]+;/, mode==='household'  ? active : inactive);
+  if(indBtn) indBtn.style.cssText = indBtn.style.cssText.replace(/background:[^;]+;border:[^;]+;color:[^;]+;/, mode==='individual' ? active : inactive);
+  _mqRebuildQuickPicks();
+}
+
 function mqPickScore(btn){
   _mqScore = btn.dataset.score;
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
@@ -5600,6 +5628,12 @@ function _mqRebuildQuickPicks(){
 function showMailQtyPicker(voterList){
   _mqPendingList = voterList;
   _mqScore = 'all';
+  _mqMailMode = 'household';
+  // Reset mode buttons
+  const hhBtn = document.getElementById('mq-mode-hh');
+  const indBtn = document.getElementById('mq-mode-ind');
+  if(hhBtn)  { hhBtn.style.background='var(--fci-sky)'; hhBtn.style.borderColor='var(--fci-sky)'; hhBtn.style.color='#fff'; }
+  if(indBtn) { indBtn.style.background='var(--surface2)'; indBtn.style.borderColor='var(--border)'; indBtn.style.color='var(--text)'; }
   // Reset score buttons
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
     const isAll = b.dataset.score === 'all';
