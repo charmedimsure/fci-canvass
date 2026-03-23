@@ -574,7 +574,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     #route-picker { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:3000; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding:24px 16px 80px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
   #route-picker.open { display:flex; }
   /* Mail labels overlay */
-  #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:3000; display:none; flex-direction:column; }
+  #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:8000; display:none; flex-direction:column; }
   #mail-labels-overlay.open { display:flex; }
   #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; overflow-x:auto; }
   #mail-labels-overlay .mlo-title { flex:1; font-size:15px; font-weight:700; color:var(--text); }
@@ -5064,7 +5064,15 @@ function showLabelHistory(dataIdx){
   // Household members
   const hhMembers = v.voters && v.voters.length
     ? v.voters.map(vn => {
-        const [fn, ln, a, po] = Array.isArray(vn) ? vn : [vn.firstName, vn.lastName, vn.age, vn.presOnly];
+        let fn, ln, a, po;
+        if(Array.isArray(vn)){
+          [fn, ln, a, po] = vn;
+        } else {
+          // voterFromAPI decoded object: {name:'First Last', age, presOnly}
+          const parts = (vn.name||'').trim().split(' ');
+          fn = parts[0]||''; ln = parts.slice(1).join(' ')||'';
+          a = vn.age; po = vn.presOnly;
+        }
         const isThis = fn===first && ln===last;
         return `<div style="padding:5px 0;border-bottom:1px solid var(--border);${isThis?'background:var(--accent-bg);border-radius:4px;padding:5px 6px;':''}">
           <span style="font-weight:${isThis?700:400};font-size:12px;color:var(--text);">${fn} ${ln}</span>
