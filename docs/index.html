@@ -2122,15 +2122,14 @@ function _voterAPIParams(focusAreas){
     SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
     CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
   };
-  // District fields are empty in D1 (migration column mismatch) — don't filter at DB level
+  // District fields are empty in D1 — never filter by district at DB level
   // applyFilters handles client-side district filtering
-  // Fall back to wizard state if no campaign focus
-  if(!params.st_house && !params.st_senate && !params.cong_dist){
-    if(filterField === 'stHouse')   params.st_house   = filterDistrict;
-    if(filterField === 'stSenate')  params.st_senate  = filterDistrict;
-    if(filterField === 'congDist')  params.cong_dist  = filterDistrict;
+  // For mail mode, always use county_num only
+  if(canvassMode === 'mail'){
+    params.county_num = '23';
+  } else if(fa.city && fa.city !== 'all'){
+    params.municipality = fa.city.toUpperCase() + ' CITY';
   }
-  if(fa.city && fa.city !== 'all') params.municipality = fa.city.toUpperCase() + ' CITY';
   return params;
 }
 
