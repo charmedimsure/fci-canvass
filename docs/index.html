@@ -4423,8 +4423,7 @@ function openModal(id){
     if(v.ward)        _distLines.push('Ward: ' + v.ward);
     if(v.schoolDist || v.school_dist) _distLines.push('🏫 School: ' + (v.schoolDist || v.school_dist));
     _distEl.style.whiteSpace = 'pre-line';
-    _distEl.textContent = _distLines.length ? _distLines.join('
-') : '—';
+    _distEl.textContent = _distLines.length ? _distLines.join('\n') : '\u2014';
   }
 
   // Central Committee badge
