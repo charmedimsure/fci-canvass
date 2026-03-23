@@ -5522,6 +5522,9 @@ async function runMailCanvass(){
     }
     _postRenderContactState = null;
   }
+  // Pre-populate donor org chips now that voters are loaded
+  _populateDonorOrgChips();
+
   let filtered = applyMailFiltersToVoters(base);
   if(!filtered.length){ toast('No voters match those filters — try broadening your criteria.',true); return; }
   filtered.forEach(v=>{ v.assignment='mail'; });
@@ -6081,6 +6084,8 @@ function _openSimpleMailFilter(){
       sec.style.display = '';
     }
   });
+  // Pre-populate donor org chips if voters already loaded
+  if(ALL_VOTERS_RAW && ALL_VOTERS_RAW.length) _populateDonorOrgChips();
   document.getElementById('mail-filter-overlay').classList.add('open');
 }
 

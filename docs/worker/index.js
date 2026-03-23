@@ -256,8 +256,6 @@ async function updateUser(userId, request, env, callerSession) {
 
 // ── Voter fetch ────────────────────────────────────────────────────────────
 async function getVoters(request, env) {
-  // Ensure county_num column exists (idempotent — fails silently if already present)
-  try { await env.DB.prepare("ALTER TABLE voters ADD COLUMN county_num TEXT DEFAULT '23'").run(); } catch(e) {}
   const url    = new URL(request.url);
   const p      = url.searchParams;
   const where  = [];
