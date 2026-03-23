@@ -29,6 +29,7 @@ function showVolunteerStartScreen(){ _show('vol-start-overlay','flex'); }
 function doVoterLookup(){
   var last  = (_el('vlookup-last')||{value:''}).value.trim();
   var first = (_el('vlookup-first')||{value:''}).value.trim();
+  var addr  = (_el('vlookup-addr')||{value:''}).value.trim();
   var err   = _el('vlookup-err');
   var btn   = _el('vlookup-btn');
   if(err) err.style.display='none';
@@ -43,6 +44,7 @@ function doVoterLookup(){
       var found=(res.voters||[]).filter(function(v){
         if((v.party||'').toUpperCase()==='R') return false;
         if(v.donations && v.donations.some(function(d){ return d.lean==='R'; })) return false;
+        if(addr){ var a=(v.a||v.address||'').toUpperCase(); if(!a.includes(addr.toUpperCase())) return false; }
         return true;
       });
       var resultsEl=_el('vlookup-results');
@@ -1762,6 +1764,16 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <div class="modal-field">
           <div class="modal-label">Ages</div>
           <div class="modal-info" id="m-ages"></div>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">Precinct</div>
+          <div class="modal-info" id="m-precinct"></div>
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">Districts</div>
+          <div class="modal-info" id="m-districts"></div>
         </div>
       </div>
       <div class="modal-row">
@@ -3741,7 +3753,12 @@ async function doVoterLookup(){
     if(first) params.first_name = first;
 
     const res = await apiGet('/api/voters', params);
-    const found = (res.voters || []).map(voterFromAPI).filter(v => !isRegisteredRep(v) && !isRepDonor(v));
+    const _addrFilter = (document.getElementById('vlookup-addr')||{value:''}).value.trim().toUpperCase();
+    const found = (res.voters || []).map(voterFromAPI).filter(v => {
+      if(isRegisteredRep(v) || isRepDonor(v)) return false;
+      if(_addrFilter && !(v.address||'').toUpperCase().includes(_addrFilter)) return false;
+      return true;
+    });
 
     const resultsEl = document.getElementById('vlookup-results');
     const countEl   = document.getElementById('vlookup-count');
@@ -4389,6 +4406,26 @@ function openModal(id){
   contactInfoEl.style.display = contactParts.length ? '' : 'none';
   document.getElementById('m-party').textContent=v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'—';
   document.getElementById('m-ages').textContent=v.ages ? v.ages.split(',').join(', ') : '—';
+  const _precEl = document.getElementById('m-precinct');
+  if(_precEl) _precEl.textContent = v.precinctName || v.precinct || '—';
+  const _distEl = document.getElementById('m-districts');
+  if(_distEl){
+    const _distLines = [];
+    // Federal
+    if(v.congDist)    _distLines.push('🇺🇸 Congress: ' + v.congDist);
+    // State
+    if(v.stSenate)    _distLines.push('🏛 Senate: ' + v.stSenate);
+    if(v.stHouse)     _distLines.push('🏛 House: ' + v.stHouse);
+    // Local
+    if(v.municipality) _distLines.push('🏙 City: ' + v.municipality);
+    if(v.township)    _distLines.push('🏘 Township: ' + v.township);
+    if(v.village)     _distLines.push('🏡 Village: ' + v.village);
+    if(v.ward)        _distLines.push('Ward: ' + v.ward);
+    if(v.schoolDist || v.school_dist) _distLines.push('🏫 School: ' + (v.schoolDist || v.school_dist));
+    _distEl.style.whiteSpace = 'pre-line';
+    _distEl.textContent = _distLines.length ? _distLines.join('
+') : '—';
+  }
 
   // Central Committee badge
   const _ccKey = (v.precinctName || '').toUpperCase();
@@ -7855,6 +7892,12 @@ if('serviceWorker' in navigator){
           onkeydown="if(event.key==='Enter')doVoterLookup()"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
       </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Street Address <span style="font-weight:400;opacity:.6;">(optional — helps narrow results)</span></label>
+      <input id="vlookup-addr" type="text" placeholder="e.g. 123 Main St" autocomplete="street-address"
+        onkeydown="if(event.key==='Enter')doVoterLookup()"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
     </div>
     <button id="vlookup-btn" onclick="doVoterLookup()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;margin-bottom:14px;">Search →</button>
     <div id="vlookup-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:10px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>
