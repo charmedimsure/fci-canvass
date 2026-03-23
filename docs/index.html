@@ -8,6 +8,8 @@ window.FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
 
 function _el(id){ return document.getElementById(id); }
 function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
+// Stub for getVoterEdit — replaced by full implementation in main script
+if(typeof getVoterEdit === 'undefined') window.getVoterEdit = function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
 function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
 
 // Overlay openers
