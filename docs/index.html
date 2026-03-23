@@ -135,12 +135,9 @@ function vlookupOpenProfile(id){
 }
 function toggleTheme(){ var r=window._realToggleTheme; if(r)r(); }
 function maybeCollectVolInfo(cb){
-  // If main script loaded, use real implementation
-  if(window._mainScriptLoaded && typeof window._realMaybeCollectVolInfo==='function'){
-    window._realMaybeCollectVolInfo(cb);
-  } else if(cb) {
-    cb();
-  }
+  // Early stub — main script overwrites this with full implementation
+  // Just call cb directly; after main script loads this function is replaced
+  if(cb) cb();
 }
 function showVolunteerStartScreen(){
   _show('vol-start-overlay','flex');
@@ -579,7 +576,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   /* Mail labels overlay */
   #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:3000; display:none; flex-direction:column; }
   #mail-labels-overlay.open { display:flex; }
-  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; flex-wrap:wrap; }
+  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; overflow-x:auto; }
   #mail-labels-overlay .mlo-title { flex:1; font-size:15px; font-weight:700; color:var(--text); }
   #mail-labels-overlay .mlo-sub { font-size:11px; color:var(--text-muted); }
   #mail-labels-overlay .mlo-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; background:#f5f5f5; padding:16px; }
@@ -1415,11 +1412,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 <!-- MAIL LABELS OVERLAY -->
 <div id="mail-labels-overlay">
   <div class="mlo-header">
-    <div>
+    <div style="flex:1;min-width:0;">
       <div class="mlo-title">✉️ Mail Labels</div>
       <div class="mlo-sub" id="mlo-sub">0 voters</div>
     </div>
-    <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">🖨 Print Labels</button>
+    <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap;">🖨 Print Labels</button>
     <button onclick="document.getElementById('mail-labels-overlay').classList.remove('open');document.getElementById('mlo-history-panel').style.display='none';" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✕ Close</button>
   </div>
   <div style="display:flex;flex:1;overflow:hidden;">
@@ -5415,7 +5412,11 @@ function applyMailFiltersToVoters(vlist){
         CD12:{field:'congDist', value:'12TH CONGRESSIONAL'}
       };
       const dm = distMap[districtToCheck];
-      if(dm && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
+      // Only apply district filter if voters actually have district data populated
+      if(dm){
+        const hasDistrictData = result.some(v2 => (v2[dm.field]||'').trim().length > 0);
+        if(hasDistrictData && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
+      }
     }
     // Donor filter
     if(mailSortDonors && !(v.donations && v.donations.length)) return false;
@@ -5424,9 +5425,10 @@ function applyMailFiltersToVoters(vlist){
       const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
       if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
     }
-    // Ward filter
+    // Ward filter — only apply if voters actually have ward data
     if(!mailSortDonors && mailFilterWards.length){
-      if(!mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
+      const hasWardData = result.some(v2 => (v2.ward||'').trim().length > 0);
+      if(hasWardData && !mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
     }
     // Central committee precinct filter
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
