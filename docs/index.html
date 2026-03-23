@@ -1495,12 +1495,12 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <button class="mf-chip" data-cd12-county="21" onclick="toggleCd12County(this)">Delaware</button>
       <button class="mf-chip" data-cd12-county="42" onclick="toggleCd12County(this)">Knox</button>
       <button class="mf-chip" data-cd12-county="38" onclick="toggleCd12County(this)">Holmes</button>
-      <button class="mf-chip" data-cd12-county="57" onclick="toggleCd12County(this)">Monroe</button>
+      <button class="mf-chip" data-cd12-county="56" onclick="toggleCd12County(this)">Monroe</button>
       <button class="mf-chip" data-cd12-county="61" onclick="toggleCd12County(this)">Noble</button>
-      <button class="mf-chip" data-cd12-county="29" onclick="toggleCd12County(this)">Guernsey</button>
+      <button class="mf-chip" data-cd12-county="30" onclick="toggleCd12County(this)">Guernsey</button>
       <button class="mf-chip" data-cd12-county="16" onclick="toggleCd12County(this)">Coshocton</button>
       <button class="mf-chip" data-cd12-county="60" onclick="toggleCd12County(this)">Muskingum</button>
-      <button class="mf-chip" data-cd12-county="62" onclick="toggleCd12County(this)">Perry</button>
+      <button class="mf-chip" data-cd12-county="64" onclick="toggleCd12County(this)">Perry</button>
       <button class="mf-chip" data-cd12-county="45" onclick="toggleCd12County(this)">Licking</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -2133,9 +2133,15 @@ function _voterAPIParams(focusAreas){
   };
   // District fields are empty in D1 — never filter by district at DB level
   // applyFilters handles client-side district filtering
-  // For mail mode, always use county_num only
+  // For mail mode, scope by county
   if(canvassMode === 'mail'){
-    params.county_num = '23';
+    // HD-69 and CD-12 span multiple counties — fetch all, filter client-side
+    const crossCountyRaces = ['CD12', 'HD69'];
+    const isCrossCounty = (fa.district && crossCountyRaces.includes(fa.district)) ||
+                          (filterField === 'congDist') ||
+                          (filterField === 'stHouse' && filterDistrict === '69');
+    if(!isCrossCounty) params.county_num = '23';
+    // cross-county races: no county filter, applyFilters handles county selection
   } else if(fa.city && fa.city !== 'all'){
     params.municipality = fa.city.toUpperCase() + ' CITY';
   }
@@ -5477,8 +5483,10 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        // District fields are empty in D1 — fetch all county voters, filter client-side
-        fetchParams.county_num = '23';
+        // HD-69 and CD-12 span multiple counties — no county filter
+        const _crossCounty = (filterField === 'congDist') ||
+                             (filterField === 'stHouse' && filterDistrict === '69');
+        if(!_crossCounty) fetchParams.county_num = '23';
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
         else if(areaField === 'st_house') fetchParams.st_house = areaValue;

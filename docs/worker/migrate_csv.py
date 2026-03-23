@@ -51,6 +51,41 @@ def normalize_city(row):
     city = row.get('RESIDENTIAL_CITY', '') or row.get('CITY', '') or ''
     return str(city).strip().upper()
 
+def get_party(row):
+    return str(row.get('PARTYAFFIL', '') or row.get('PARTY_AFFILIATION', '')).strip().upper()
+
+def get_status(row):
+    return str(row.get('VOTERSTAT', '') or row.get('VOTER_STATUS', '')).strip().upper()
+
+def get_zip(row):
+    return str(row.get('RESIDENTIAL_ZIP', '') or row.get('ZIP', '') or '').strip()[:5]
+
+def get_names(row):
+    fn = str(row.get('FIRST_NAME', '') or row.get('FIRSTN', '') or '').strip().title()
+    ln = str(row.get('LAST_NAME',  '') or row.get('LASTN',  '') or '').strip().title()
+    return fn, ln
+
+def get_dob_year(row):
+    dob = row.get('DATE_OF_BIRTH', '') or row.get('BIRTHYEAR', '')
+    try:
+        by = str(dob).strip()[:4]
+        return int(by) if by.isdigit() else None
+    except:
+        return None
+
+def get_districts(row):
+    return {
+        'stHouse':  str(row.get('OH HOUSE',   '') or row.get('STATE_HOUSE',  '') or '').strip(),
+        'stSenate': str(row.get('OH SENATE',  '') or row.get('STATE_SENATE', '') or '').strip(),
+        'congDist': str(row.get('US CONG',    '') or row.get('US_CONGRESS',  '') or '').strip(),
+        'township': str(row.get('TOWNSHIP',   '') or '').strip().upper(),
+        'municipality': str(row.get('CITY',   '') or row.get('RESIDENTIAL_CITY', '') or '').strip().upper(),
+        'village':  str(row.get('VILLAGE',    '') or '').strip().upper(),
+        'ward':     str(row.get('CITY WARD',  '') or '').strip().upper(),
+        'precinctName': str(row.get('PRECNAME','') or row.get('PRECINCT_NAME','') or '').strip().upper(),
+        'countyNum': str(row.get('CNTYIDNUM', '') or row.get('COUNTY_NUMBER','') or '').strip(),
+    }
+
 def household_key(addr, city, zip_code):
     return (addr.strip().upper(), city.strip().upper(), str(zip_code or '').strip()[:5])
 
@@ -85,7 +120,7 @@ def process_files(csv_files):
                 file_skipped = 0
                 for row in reader:
                     # Filter: active voters only
-                    status = str(row.get('VOTERSTAT', '') or row.get('VOTER_STATUS', '')).strip().upper()
+                    status = get_status(row)
                     if status not in ('A', 'ACTIVE'):
                         skipped_inactive += 1
                         continue
@@ -113,7 +148,7 @@ def build_households(raw_voters):
     for (row, election_cols, party) in raw_voters:
         addr = normalize_address(row)
         city = normalize_city(row)
-        zip5 = str(row.get('RESIDENTIAL_ZIP', '') or row.get('ZIP', '') or '').strip()[:5]
+        zip5 = get_zip(row)
         key  = household_key(addr, city, zip5)
         households[key].append((row, election_cols, party, addr, city, zip5))
 
@@ -131,7 +166,7 @@ def build_voter_record(hh_key, members):
     last_names = []
     seen_last = set()
     for (row, _, _, _, _, _) in members:
-        ln = str(row.get('LAST_NAME', '') or row.get('LASTN', '') or '').strip().title()
+        _, ln = get_names(row)
         if ln and ln not in seen_last:
             last_names.append(ln)
             seen_last.add(ln)
@@ -186,14 +221,9 @@ def build_voter_record(hh_key, members):
     current_year = 2026
     vns = []
     for (row, election_cols, _, _, _, _) in members:
-        fn  = str(row.get('FIRST_NAME', '') or row.get('FIRSTN', '') or '').strip().title()
-        ln  = str(row.get('LAST_NAME',  '') or row.get('LASTN',  '') or '').strip().title()
-        dob = row.get('DATE_OF_BIRTH', '') or row.get('BIRTHYEAR', '')
-        try:
-            by = str(dob).strip()[:4]   # works for YYYY-MM-DD or plain YYYY
-            age = current_year - int(by) if by.isdigit() else None
-        except:
-            age = None
+        fn, ln = get_names(row)
+        birth_year = get_dob_year(row)
+        age = current_year - birth_year if birth_year else None
 
         # presOnly: only voted in presidential years
         member_years = set()
@@ -211,16 +241,15 @@ def build_voter_record(hh_key, members):
     ages_str = ','.join(ages_list)
 
     # District info from first member
-    def g(k): return str(row0.get(k, '') or '').strip()
-
-    precinct_name = g('PRECINCT_NAME') or g('PRECNAME')
-    st_house      = g('STATE_HOUSE') or g('OH HOUSE')
-    st_senate     = g('STATE_SENATE') or g('OH SENATE')
-    cong_dist     = g('US_CONGRESS') or g('US CONG')
-    township      = g('TOWNSHIP')
-    municipality  = g('RESIDENTIAL_CITY') or g('CITY')
-    village       = g('VILLAGE')
-    school_dist   = g('SCHOOL_DISTRICT') or g('SCHOOL DISTRICT')
+    dists = get_districts(row0)
+    precinct_name = dists['precinctName']
+    st_house      = dists['stHouse']
+    st_senate     = dists['stSenate']
+    cong_dist     = dists['congDist']
+    township      = dists['township']
+    municipality  = dists['municipality']
+    village       = dists['village']
+    school_dist   = str(row0.get('SCHOOL_DISTRICT','') or row0.get('SCHOOL DISTRICT','') or '').strip()
 
     # Generate ID
     vid = make_id(display_name, addr, city)
@@ -257,6 +286,7 @@ def build_voter_record(hh_key, members):
         'ward':         '',
         'score':        None,
         'donations':    [],
+        'countyNum':    dists['countyNum'] or str(row0.get('COUNTY_NUMBER','') or row0.get('CNTYIDNUM','') or '').strip(),
     }
     return record
 
@@ -266,6 +296,9 @@ def upload_voters(voters, worker_url, api_key, admin_key, batch_size=200):
         'Content-Type': 'application/json',
         'X-FCI-Key':    api_key,
         'X-FCI-Admin':  admin_key,
+        'User-Agent':   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Origin':       worker_url,
+        'Referer':      worker_url + '/',
     }
     total   = len(voters)
     loaded  = 0
@@ -298,6 +331,71 @@ def upload_voters(voters, worker_url, api_key, admin_key, batch_size=200):
         time.sleep(0.15)
 
     print(f"\n✅ Done! {loaded:,} households uploaded. Errors: {errors}")
+
+
+# ── Census Geocoder ──────────────────────────────────────────────────────────
+def geocode_census_batch(records, batch_size=2000):
+    """
+    Geocode a list of {'id', 'address', 'city', 'state', 'zip'} dicts
+    using the Census Geocoder batch API.
+    Returns dict of id -> (lat, lon).
+    """
+    import io, csv as _csv
+    results = {}
+    total = len(records)
+    print(f"\nGeocoding {total:,} addresses via Census Geocoder...")
+
+    for i in range(0, total, batch_size):
+        batch = records[i:i+batch_size]
+        batch_num = i // batch_size + 1
+        print(f"  Batch {batch_num}: {i+1}–{min(i+batch_size, total):,}...")
+
+        # Build CSV payload
+        buf = io.StringIO()
+        for r in batch:
+            # Census format: ID, Street, City, State, ZIP
+            buf.write(f'"{r["id"]}","{r["address"]}","{r["city"]}","OH","{r["zip"]}"\n')
+
+        import urllib.request, urllib.parse
+        boundary = '----CensusBoundary'
+        body = (
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="addressFile"; filename="addresses.csv"\r\n'
+            f'Content-Type: text/plain\r\n\r\n'
+            + buf.getvalue()
+            + f'\r\n--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="benchmark"\r\n\r\n'
+            f'Public_AR_Current\r\n'
+            f'--{boundary}--\r\n'
+        ).encode('utf-8')
+
+        url = 'https://geocoding.geo.census.gov/geocoder/locations/addressbatch'
+        req = urllib.request.Request(url, data=body, method='POST')
+        req.add_header('Content-Type', f'multipart/form-data; boundary={boundary}')
+
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                text = resp.read().decode('utf-8', errors='replace')
+            reader = _csv.reader(io.StringIO(text))
+            for row in reader:
+                if len(row) >= 6 and row[2].strip().upper() == 'MATCH':
+                    vid = row[0].strip()
+                    coords = row[5].strip()  # "lon,lat"
+                    if coords:
+                        parts = coords.split(',')
+                        if len(parts) == 2:
+                            try:
+                                lon, lat = float(parts[0]), float(parts[1])
+                                results[vid] = (lat, lon)
+                            except ValueError:
+                                pass
+        except Exception as e:
+            print(f"  WARNING: Geocoding batch {batch_num} failed: {e}")
+
+    matched = len(results)
+    print(f"  Geocoded {matched:,}/{total:,} addresses ({matched/total*100:.0f}%)")
+    return results
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -370,67 +468,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# ── Census Geocoder ──────────────────────────────────────────────────────────
-def geocode_census_batch(records, batch_size=9999):
-    """
-    Geocode a list of {'id', 'address', 'city', 'state', 'zip'} dicts
-    using the Census Geocoder batch API.
-    Returns dict of id -> (lat, lon).
-    """
-    import io, csv as _csv
-    results = {}
-    total = len(records)
-    print(f"\nGeocoding {total:,} addresses via Census Geocoder...")
-
-    for i in range(0, total, batch_size):
-        batch = records[i:i+batch_size]
-        batch_num = i // batch_size + 1
-        print(f"  Batch {batch_num}: {i+1}–{min(i+batch_size, total):,}...")
-
-        # Build CSV payload
-        buf = io.StringIO()
-        for r in batch:
-            # Census format: ID, Street, City, State, ZIP
-            buf.write(f'"{r["id"]}","{r["address"]}","{r["city"]}","OH","{r["zip"]}"\n')
-
-        import urllib.request, urllib.parse
-        boundary = '----CensusBoundary'
-        body = (
-            f'--{boundary}\r\n'
-            f'Content-Disposition: form-data; name="addressFile"; filename="addresses.csv"\r\n'
-            f'Content-Type: text/plain\r\n\r\n'
-            + buf.getvalue()
-            + f'\r\n--{boundary}\r\n'
-            f'Content-Disposition: form-data; name="benchmark"\r\n\r\n'
-            f'Public_AR_Current\r\n'
-            f'--{boundary}--\r\n'
-        ).encode('utf-8')
-
-        url = 'https://geocoding.geo.census.gov/geocoder/locations/addressbatch'
-        req = urllib.request.Request(url, data=body, method='POST')
-        req.add_header('Content-Type', f'multipart/form-data; boundary={boundary}')
-
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                text = resp.read().decode('utf-8', errors='replace')
-            reader = _csv.reader(io.StringIO(text))
-            for row in reader:
-                if len(row) >= 6 and row[2].strip().upper() == 'MATCH':
-                    vid = row[0].strip()
-                    coords = row[5].strip()  # "lon,lat"
-                    if coords:
-                        parts = coords.split(',')
-                        if len(parts) == 2:
-                            try:
-                                lon, lat = float(parts[0]), float(parts[1])
-                                results[vid] = (lat, lon)
-                            except ValueError:
-                                pass
-        except Exception as e:
-            print(f"  WARNING: Geocoding batch {batch_num} failed: {e}")
-
-    matched = len(results)
-    print(f"  Geocoded {matched:,}/{total:,} addresses ({matched/total*100:.0f}%)")
-    return results
