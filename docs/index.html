@@ -10,6 +10,8 @@ function _el(id){ return document.getElementById(id); }
 function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
 // Stub for getVoterEdit — replaced by full implementation in main script
 if(typeof getVoterEdit === 'undefined') window.getVoterEdit = function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
+// Stub for doAuthLogin
+if(typeof doAuthLogin === 'undefined') window.doAuthLogin = function(){ if(typeof window._realDoAuthLogin==='function') window._realDoAuthLogin(); };
 function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
 
 // Overlay openers
@@ -2389,7 +2391,20 @@ async function selectArea(btn){
     const want = norm(areaValue);
     areaVoters = ALL_VOTERS_RAW.filter(v => {
       const val = norm(v[areaField]||'');
-      return val && (val===want||val.includes(want)||want.includes(val));
+      if(!val || !(val===want||val.includes(want)||want.includes(val))) return false;
+      // For municipality filter: exclude voters whose precinct belongs to a different township
+      // (e.g. Rock Mill Rd has Lancaster mailing address but is Amanda Township)
+      if(areaField === 'municipality'){
+        const prec = (v.precinctName||'').toUpperCase();
+        const cityWant = want.replace(/city$/,'').trim(); // e.g. 'lancaster'
+        // Only include voters whose precinct name starts with the city name
+        // e.g. Lancaster City precincts: 'LANCASTER CITY 1-A', 'LANCASTER CITY 2-B'
+        // Pickerington precincts: 'PICKERINGTON CITY A'
+        // This prevents rural mailing-address matches from leaking in
+        const normPrec = prec.toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
+        if(!normPrec.startsWith(cityWant)) return false;
+      }
+      return true;
     });
   }
   needsNeighborhood = (areaField==='municipality') || areaVoters.length > 300;
@@ -3072,8 +3087,9 @@ function adaptiveThreshold(pts){
 }
 
 function clusterVoters(vl){
-  // Exclude Republican donors and registered Republicans before clustering
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v));
+  // Exclude Republican donors, registered Republicans, and mail-only households (assisted living/dorms)
+  const mailOnlyList = vl.filter(v => v.mailOnly);
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly);
   const ROUTE_TARGET=15;
   const valid=vl.filter(v=>v.lat&&v.lon);
   const noCoord=vl.filter(v=>!v.lat||!v.lon);
@@ -5173,7 +5189,7 @@ function showLabelHistory(dataIdx){
         ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:4px 0;">No voting history on file</div>'
         : '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + voteDots + '</div>'
       }
-      ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}</div>` : ''}
+      ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}${v.lastPrimaryYear ? ' (' + v.lastPrimaryYear + ')' : ''}</div>` : ''}
       ${v.specialsVoted ? `<div style="font-size:11px;color:var(--text-muted);">${v.specialsVoted} special elections</div>` : ''}
     </div>
 
@@ -6260,8 +6276,13 @@ async function generateRoutes(){
   // (mail mode already handled above)
 
   await geocodeAll(voters);
-  const res=clusterVoters(voters);
-  walkClusters=res.walk; mailList=res.mail;
+  // Separate mail-only households (assisted living/dorms) before clustering
+  const _mailOnlyVoters = voters.filter(v => v.mailOnly);
+  const _doorVoters = voters.filter(v => !v.mailOnly);
+  const res=clusterVoters(_doorVoters);
+  walkClusters=res.walk;
+  // Combine clustered mail list with mail-only households
+  mailList=[...res.mail, ..._mailOnlyVoters];
   const threshFt = Math.round((res.thresh||0.12) * 5280);
   walkClusters.forEach((cl,ci)=>cl.forEach(v=>{v.assignment=`walk-${ci+1}`;v.clusterNum=ci+1;}));
   mailList.forEach(v=>{v.assignment='mail';});
@@ -7833,6 +7854,7 @@ function exportCandidateCSV(){
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
 window._realMaybeCollectVolInfo = maybeCollectVolInfo;
+window._realDoAuthLogin = doAuthLogin;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 
