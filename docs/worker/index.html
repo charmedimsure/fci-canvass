@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <script>
 // ── EARLY DEFINITIONS ────────────────────────────────────────────
 // Ensures onclick handlers work even if main script hasn't finished loading.
@@ -7,6 +8,10 @@ window.FCI_API_KEY = window.FCI_API_KEY || 'ohiofcicanvass7312';
 
 function _el(id){ return document.getElementById(id); }
 function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
+// Stub for getVoterEdit — replaced by full implementation in main script
+if(typeof getVoterEdit === 'undefined') window.getVoterEdit = function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
+// Stub for doAuthLogin
+if(typeof doAuthLogin === 'undefined') window.doAuthLogin = function(){ if(typeof window._realDoAuthLogin==='function') window._realDoAuthLogin(); };
 function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
 
 // Overlay openers
@@ -26,6 +31,7 @@ function showVolunteerStartScreen(){ _show('vol-start-overlay','flex'); }
 function doVoterLookup(){
   var last  = (_el('vlookup-last')||{value:''}).value.trim();
   var first = (_el('vlookup-first')||{value:''}).value.trim();
+  var addr  = (_el('vlookup-addr')||{value:''}).value.trim();
   var err   = _el('vlookup-err');
   var btn   = _el('vlookup-btn');
   if(err) err.style.display='none';
@@ -37,7 +43,12 @@ function doVoterLookup(){
     .then(function(r){ return r.json(); })
     .then(function(res){
       if(btn){ btn.textContent='Search →'; btn.disabled=false; }
-      var found=(res.voters||[]).filter(function(v){ return (v.party||'').toUpperCase()!=='R'; });
+      var found=(res.voters||[]).filter(function(v){
+        if((v.party||'').toUpperCase()==='R') return false;
+        if(v.donations && v.donations.some(function(d){ return d.lean==='R'; })) return false;
+        if(addr){ var a=(v.a||v.address||'').toUpperCase(); if(!a.includes(addr.toUpperCase())) return false; }
+        return true;
+      });
       var resultsEl=_el('vlookup-results');
       var countEl=_el('vlookup-count');
       var listEl=_el('vlookup-list');
@@ -128,12 +139,9 @@ function vlookupOpenProfile(id){
 }
 function toggleTheme(){ var r=window._realToggleTheme; if(r)r(); }
 function maybeCollectVolInfo(cb){
-  // If main script loaded, use real implementation
-  if(window._mainScriptLoaded && typeof window._realMaybeCollectVolInfo==='function'){
-    window._realMaybeCollectVolInfo(cb);
-  } else if(cb) {
-    cb();
-  }
+  // Early stub — main script overwrites this with full implementation
+  // Just call cb directly; after main script loads this function is replaced
+  if(cb) cb();
 }
 function showVolunteerStartScreen(){
   _show('vol-start-overlay','flex');
@@ -528,7 +536,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .mode-btn.selected { border-color:var(--accent); background:var(--accent-bg); color:var(--accent); }
   /* Route picker overlay */
   /* Mail filter overlay */
-  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:3500; display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
+  #mail-filter-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:8500; display:none; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; box-sizing:border-box; width:100%; }
   #mail-filter-overlay.open { display:flex; }
   .mf-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:480px; max-height:85vh; overflow-y:scroll; -webkit-overflow-scrolling:touch; padding:24px; }
   .mf-title { font-size:17px; font-weight:700; margin-bottom:4px; }
@@ -570,9 +578,9 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     #route-picker { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:3000; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding:24px 16px 80px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
   #route-picker.open { display:flex; }
   /* Mail labels overlay */
-  #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:3000; display:none; flex-direction:column; }
+  #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:8000; display:none; flex-direction:column; }
   #mail-labels-overlay.open { display:flex; }
-  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  #mail-labels-overlay .mlo-header { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; overflow-x:auto; }
   #mail-labels-overlay .mlo-title { flex:1; font-size:15px; font-weight:700; color:var(--text); }
   #mail-labels-overlay .mlo-sub { font-size:11px; color:var(--text-muted); }
   #mail-labels-overlay .mlo-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; background:#f5f5f5; padding:16px; }
@@ -1116,6 +1124,35 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         </div>
       </div>
 
+      <!-- STEP MAIL-LEVEL: Federal / State / Local (mail only) -->
+      <div class="wizard-step" id="step-mail-level" style="display:none;">
+        <div class="step-header">
+          <span class="step-num">2</span>
+          <span class="step-title">What level are you canvassing for?</span>
+          <span class="step-chip" id="chip-mail-level" style="display:none;"></span>
+          <button class="step-change" id="change-mail-level" onclick="resetMailToLevel()" style="display:none;">change</button>
+        </div>
+        <div class="step-body" id="body-mail-level">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="mode-btn" onclick="pickMailLevel('federal')" style="flex:1;min-width:120px;">
+              <span style="font-size:26px;display:block;margin-bottom:5px;">🇺🇸</span>
+              <span style="font-size:13px;font-weight:700;display:block;">Federal</span>
+              <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">President · Senate · Congress</span>
+            </button>
+            <button class="mode-btn" onclick="pickMailLevel('state')" style="flex:1;min-width:120px;">
+              <span style="font-size:26px;display:block;margin-bottom:5px;">🏛️</span>
+              <span style="font-size:13px;font-weight:700;display:block;">State</span>
+              <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">Governor · Legislature · Statewide</span>
+            </button>
+            <button class="mode-btn" onclick="pickMailLevel('local')" style="flex:1;min-width:120px;">
+              <span style="font-size:26px;display:block;margin-bottom:5px;">🏘️</span>
+              <span style="font-size:13px;font-weight:700;display:block;">Local</span>
+              <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:2px;">County · City · Township · School</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- STEP 2: AREA -->
       <div id="litdrop-option" style="display:none;padding:0 0 10px;">
         <button onclick="pickMode('litdrop')" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-muted);font-size:12px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">📰 Switch to Lit Drop instead</button>
@@ -1289,7 +1326,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 
       <!-- GENERATE -->
       <div id="step-generate" style="display:none;">
-        <button id="generate-btn" onclick="canvassMode==='mail'?openMailFilter():generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
+        <button id="generate-btn" onclick="canvassMode==='mail'?_openSimpleMailFilter():generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
           Generate Routes →
         </button>
         <div id="generate-hint" style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:8px;"></div>
@@ -1379,11 +1416,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 <!-- MAIL LABELS OVERLAY -->
 <div id="mail-labels-overlay">
   <div class="mlo-header">
-    <div>
+    <div style="flex:1;min-width:0;">
       <div class="mlo-title">✉️ Mail Labels</div>
       <div class="mlo-sub" id="mlo-sub">0 voters</div>
     </div>
-    <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;">🖨 Print Labels</button>
+    <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap;">🖨 Print Labels</button>
     <button onclick="document.getElementById('mail-labels-overlay').classList.remove('open');document.getElementById('mlo-history-panel').style.display='none';" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✕ Close</button>
   </div>
   <div style="display:flex;flex:1;overflow:hidden;">
@@ -1404,6 +1441,15 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,420px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
     <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;">📬 How many postcards?</div>
     <div id="mq-sub" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;"></div>
+
+    <!-- Household vs Individual toggle -->
+    <div style="margin-bottom:20px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px;">Label type</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button id="mq-mode-hh" onclick="mqSetMode('household',this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:10px 8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🏠 By Household<div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px;">One label per address</div></button>
+        <button id="mq-mode-ind" onclick="mqSetMode('individual',this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:10px 8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">👤 By Individual<div style="font-size:10px;font-weight:400;opacity:.8;margin-top:2px;">One label per voter</div></button>
+      </div>
+    </div>
 
     <!-- Score filter -->
     <div style="margin-bottom:20px;">
@@ -1432,13 +1478,42 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     </div>
 
     <div style="display:flex;gap:10px;">
-      <button onclick="document.getElementById('mail-qty-overlay').style.display='none';openMailFilter();" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Back</button>
+      <button onclick="document.getElementById('mail-qty-overlay').style.display='none';_openSimpleMailFilter();" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Back</button>
       <button onclick="mqConfirm()" style="flex:2;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;border-radius:9px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Generate List →</button>
     </div>
   </div>
 </div>
 
 <!-- MAIL FILTER OVERLAY -->
+<!-- CD12 COUNTY SELECTION OVERLAY -->
+<div id="cd12-county-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;width:100%;box-sizing:border-box;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 22px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;">
+    <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">📬 CD-12 Mail Coverage</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px;line-height:1.5;">
+      Congressional District 12 spans multiple counties. Outside Fairfield County, voters can only be reached <strong style="color:var(--text);">by mail</strong> — not door-to-door.<br><br>
+      Which counties would you like to include? (Fairfield pre-selected)
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Select counties (multi-select)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;" id="cd12-county-chips">
+      <button class="mf-chip sel" data-cd12-county="23" onclick="toggleCd12County(this)">Fairfield</button>
+      <button class="mf-chip" data-cd12-county="21" onclick="toggleCd12County(this)">Delaware</button>
+      <button class="mf-chip" data-cd12-county="42" onclick="toggleCd12County(this)">Knox</button>
+      <button class="mf-chip" data-cd12-county="38" onclick="toggleCd12County(this)">Holmes</button>
+      <button class="mf-chip" data-cd12-county="56" onclick="toggleCd12County(this)">Monroe</button>
+      <button class="mf-chip" data-cd12-county="61" onclick="toggleCd12County(this)">Noble</button>
+      <button class="mf-chip" data-cd12-county="30" onclick="toggleCd12County(this)">Guernsey</button>
+      <button class="mf-chip" data-cd12-county="16" onclick="toggleCd12County(this)">Coshocton</button>
+      <button class="mf-chip" data-cd12-county="60" onclick="toggleCd12County(this)">Muskingum</button>
+      <button class="mf-chip" data-cd12-county="64" onclick="toggleCd12County(this)">Perry</button>
+      <button class="mf-chip" data-cd12-county="45" onclick="toggleCd12County(this)">Licking</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button onclick="confirmCd12Counties()" style="background:var(--accent);color:#fff;border:none;border-radius:9px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Continue to Filters →</button>
+      <button onclick="document.getElementById('cd12-county-overlay').style.display='none';" style="background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Back</button>
+    </div>
+  </div>
+</div>
+
 <div id="mail-filter-overlay">
   <div class="mf-card">
     <div class="mf-title">✉️ Filter Your Mail List</div>
@@ -1447,7 +1522,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- AGE -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-age-toggle">
           <input type="checkbox" id="mf-age-toggle" onchange="mfTogglePanel('age')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1467,7 +1542,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- PRESIDENTIAL GENERAL ONLY -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-pres-toggle">
           <input type="checkbox" id="mf-pres-toggle" onchange="mfTogglePresOnly(this)">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1479,7 +1554,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- SORT BY DONORS -->
     <div class="mf-section" id="mf-donor-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-donor-toggle">
           <input type="checkbox" id="mf-donor-toggle" onchange="mfToggleDonorSort(this)">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1506,7 +1581,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- LOCATION -->
     <div class="mf-section" id="mf-loc-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-loc-toggle">
           <input type="checkbox" id="mf-loc-toggle" onchange="mfTogglePanel('loc')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1526,7 +1601,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- STATE HOUSE DISTRICT -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-district-toggle">
           <input type="checkbox" id="mf-district-toggle" onchange="mfTogglePanel('district')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1545,7 +1620,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- CITY COUNCIL WARD -->
     <div class="mf-section">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-ward-toggle">
           <input type="checkbox" id="mf-ward-toggle" onchange="mfTogglePanel('ward')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1571,7 +1646,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
     <!-- CENTRAL COMMITTEE DISTRICT -->
     <div class="mf-section" id="mf-cc-section" style="display:none;">
       <div class="mf-toggle-row">
-        <label class="mf-toggle">
+        <label class="mf-toggle" for="mf-cc-toggle">
           <input type="checkbox" id="mf-cc-toggle" onchange="mfTogglePanel('cc')">
           <span class="mf-toggle-slider"></span>
         </label>
@@ -1691,6 +1766,16 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <div class="modal-field">
           <div class="modal-label">Ages</div>
           <div class="modal-info" id="m-ages"></div>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div class="modal-field">
+          <div class="modal-label">Precinct</div>
+          <div class="modal-info" id="m-precinct"></div>
+        </div>
+        <div class="modal-field">
+          <div class="modal-label">Districts</div>
+          <div class="modal-info" id="m-districts"></div>
         </div>
       </div>
       <div class="modal-row">
@@ -2060,17 +2145,20 @@ function _voterAPIParams(focusAreas){
     SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
     CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
   };
-  if(fa.district && fa.district !== 'all'){
-    const dm = distMap[fa.district];
-    if(dm) params[dm.field] = dm.value;
+  // District fields are empty in D1 — never filter by district at DB level
+  // applyFilters handles client-side district filtering
+  // For mail mode, scope by county
+  if(canvassMode === 'mail'){
+    // HD-69 and CD-12 span multiple counties — fetch all, filter client-side
+    const crossCountyRaces = ['CD12', 'HD69'];
+    const isCrossCounty = (fa.district && crossCountyRaces.includes(fa.district)) ||
+                          (filterField === 'congDist') ||
+                          (filterField === 'stHouse' && filterDistrict === '69');
+    if(!isCrossCounty) params.county_num = '23';
+    // cross-county races: no county filter, applyFilters handles county selection
+  } else if(fa.city && fa.city !== 'all'){
+    params.municipality = fa.city.toUpperCase() + ' CITY';
   }
-  // Fall back to wizard state if no campaign focus
-  if(!params.st_house && !params.st_senate && !params.cong_dist){
-    if(filterField === 'stHouse')   params.st_house   = filterDistrict;
-    if(filterField === 'stSenate')  params.st_senate  = filterDistrict;
-    if(filterField === 'congDist')  params.cong_dist  = filterDistrict;
-  }
-  if(fa.city && fa.city !== 'all') params.municipality = fa.city.toUpperCase() + ' CITY';
   return params;
 }
 
@@ -2175,7 +2263,8 @@ let mailFilterLocs    = [];    // array of {field, value} or empty = all
 let mailFilterDistrict = null; // 'HD69'|'HD73'|null
 let mailFilterWards    = [];   // array of ward strings
 let mailSortDonors    = false; // true = sort by donor amount desc, skip location filter
-let _cd12IncludeOutsideFairfield = false; // CD12 mail: include voters outside Fairfield County
+let _mailLevel        = '';    // 'federal' | 'state' | 'local'
+let _cd12Counties     = ['23']; // county numbers to include for CD12 mail (23=Fairfield always)
 let selectedRoute     = -1;   // index into walkClusters (-1 = all)
 let canvassFor        = '';
 let filterField       = '';   // voter data field for race (e.g. 'stHouse', 'ward')
@@ -2275,6 +2364,7 @@ async function selectArea(btn){
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
+      // else: no area filter — fetch all voters (worker filters by party != R)
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
@@ -2301,7 +2391,20 @@ async function selectArea(btn){
     const want = norm(areaValue);
     areaVoters = ALL_VOTERS_RAW.filter(v => {
       const val = norm(v[areaField]||'');
-      return val && (val===want||val.includes(want)||want.includes(val));
+      if(!val || !(val===want||val.includes(want)||want.includes(val))) return false;
+      // For municipality filter: exclude voters whose precinct belongs to a different township
+      // (e.g. Rock Mill Rd has Lancaster mailing address but is Amanda Township)
+      if(areaField === 'municipality'){
+        const prec = (v.precinctName||'').toUpperCase();
+        const cityWant = want.replace(/city$/,'').trim(); // e.g. 'lancaster'
+        // Only include voters whose precinct name starts with the city name
+        // e.g. Lancaster City precincts: 'LANCASTER CITY 1-A', 'LANCASTER CITY 2-B'
+        // Pickerington precincts: 'PICKERINGTON CITY A'
+        // This prevents rural mailing-address matches from leaking in
+        const normPrec = prec.toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
+        if(!normPrec.startsWith(cityWant)) return false;
+      }
+      return true;
     });
   }
   needsNeighborhood = (areaField==='municipality') || areaVoters.length > 300;
@@ -2448,6 +2551,25 @@ function selectNeighborhood(btn){
 }
 
 function selectRace(btn){
+  if(canvassMode === 'mail' && btn.dataset.field === 'congDist' && btn.dataset.district === '12'){
+    document.querySelectorAll('.race-btn').forEach(b=>b.classList.remove('selected'));
+    btn.classList.add('selected');
+    canvassFor    = btn.dataset.race     || '';
+    filterField   = btn.dataset.field    || '';
+    filterDistrict= btn.dataset.district || '';
+    document.getElementById('body-race').style.display='none';
+    document.getElementById('chip-race').style.display='inline';
+    document.getElementById('chip-race').textContent = '🏛 U.S. House — District 12';
+    document.getElementById('change-race-btn').style.display='inline';
+    _cd12Counties = [];
+    document.querySelectorAll('#cd12-county-chips [data-cd12-county]').forEach(c=>{
+      // Pre-select Fairfield by default
+      if(c.dataset.cd12County === '23') c.classList.add('sel');
+      else c.classList.remove('sel');
+    });
+    document.getElementById('cd12-county-overlay').style.display = 'flex';
+    return;
+  }
   document.querySelectorAll('.race-btn').forEach(b=>b.classList.remove('selected'));
   btn.classList.add('selected');
   canvassFor      = btn.dataset.race;
@@ -2637,9 +2759,15 @@ function applyFilters(voterList){
     list = list.filter(v => v.donations && v.donations.length > 0);
   }
 
-  // CD12 mail: exclude non-Fairfield County voters unless user opted in
-  if(canvassMode === 'mail' && filterField === 'congDist' && filterDistrict === '12' && !_cd12IncludeOutsideFairfield){
-    list = list.filter(v => String(v.countyNum || '').trim() === '23');
+  // CD12 mail: filter to selected counties only
+  if(canvassMode === 'mail' && filterField === 'congDist' && filterDistrict === '12'){
+    list = list.filter(v => {
+      const cd = String(v.congDist || v.cong_dist || '').toUpperCase();
+      if(cd && !cd.includes('12')) return false; // definitely not CD12
+      // Default missing countyNum to '23' (Fairfield) — all currently migrated voters are Fairfield
+      const cn = String(v.countyNum || '23').trim();
+      return _cd12Counties.includes(cn);
+    });
   }
 
   // Always exclude Republican donors, registered Republicans, and R-primary-only voters
@@ -2753,14 +2881,10 @@ function detectCols(headers){
   };
 }
 
-// Returns true if voter has donated ONLY to Republican causes (no D or O donations)
+// Returns true if voter has donated to ANY Republican cause
 function isRepDonor(v){
   if(!v.donations || !v.donations.length) return false;
-  // Must have at least one R donation AND zero D/O donations
-  const hasR = v.donations.some(d => d.lean === 'R');
-  const hasD = v.donations.some(d => d.lean === 'D');
-  const hasO = v.donations.some(d => d.lean === 'O');
-  return hasR && !hasD && !hasO;
+  return v.donations.some(d => d.lean === 'R');
 }
 
 // Returns true if voter is a registered Republican
@@ -2936,8 +3060,8 @@ async function geocodeStreet(query){
 }
 
 async function geocodeAll(vl){
-  // Coordinates are pre-embedded — no geocoding needed at runtime.
-  // Voters without coords (5.7%) go to mail list automatically via clustering.
+  // Coords are baked in by migrate_csv.py via Census Geocoder.
+  // Voters without coords go to mail list automatically via clustering.
   const missing = vl.filter(v => !v.lat || !v.lon).length;
   if(missing > 0) console.log(`${missing} voters have no coords → mail list`);
 }
@@ -2963,8 +3087,9 @@ function adaptiveThreshold(pts){
 }
 
 function clusterVoters(vl){
-  // Exclude Republican donors and registered Republicans before clustering
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v));
+  // Exclude Republican donors, registered Republicans, and mail-only households (assisted living/dorms)
+  const mailOnlyList = vl.filter(v => v.mailOnly);
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly);
   const ROUTE_TARGET=15;
   const valid=vl.filter(v=>v.lat&&v.lon);
   const noCoord=vl.filter(v=>!v.lat||!v.lon);
@@ -3644,7 +3769,12 @@ async function doVoterLookup(){
     if(first) params.first_name = first;
 
     const res = await apiGet('/api/voters', params);
-    const found = (res.voters || []).map(voterFromAPI).filter(v => !isRegisteredRep(v));
+    const _addrFilter = (document.getElementById('vlookup-addr')||{value:''}).value.trim().toUpperCase();
+    const found = (res.voters || []).map(voterFromAPI).filter(v => {
+      if(isRegisteredRep(v) || isRepDonor(v)) return false;
+      if(_addrFilter && !(v.address||'').toUpperCase().includes(_addrFilter)) return false;
+      return true;
+    });
 
     const resultsEl = document.getElementById('vlookup-results');
     const countEl   = document.getElementById('vlookup-count');
@@ -4282,8 +4412,9 @@ function openModal(id){
     contactInfoEl.style.cssText = 'font-size:12px;color:var(--fci-sky);margin-top:3px;';
     document.getElementById('m-addr').insertAdjacentElement('afterend', contactInfoEl);
   }
-  const phone = v.phone || getVoterEdit(v.id).phone || '';
-  const email = v.email || getVoterEdit(v.id).email || '';
+  const _gve = (typeof getVoterEdit === 'function') ? getVoterEdit : function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
+  const phone = v.phone || _gve(v.id).phone || '';
+  const email = v.email || _gve(v.id).email || '';
   const contactParts = [];
   if(phone) contactParts.push('📞 ' + phone);
   if(email) contactParts.push('✉️ ' + email);
@@ -4291,6 +4422,25 @@ function openModal(id){
   contactInfoEl.style.display = contactParts.length ? '' : 'none';
   document.getElementById('m-party').textContent=v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'—';
   document.getElementById('m-ages').textContent=v.ages ? v.ages.split(',').join(', ') : '—';
+  const _precEl = document.getElementById('m-precinct');
+  if(_precEl) _precEl.textContent = v.precinctName || v.precinct || '—';
+  const _distEl = document.getElementById('m-districts');
+  if(_distEl){
+    const _distLines = [];
+    // Federal
+    if(v.congDist)    _distLines.push('🇺🇸 Congress: ' + v.congDist);
+    // State
+    if(v.stSenate)    _distLines.push('🏛 Senate: ' + v.stSenate);
+    if(v.stHouse)     _distLines.push('🏛 House: ' + v.stHouse);
+    // Local
+    if(v.municipality) _distLines.push('🏙 City: ' + v.municipality);
+    if(v.township)    _distLines.push('🏘 Township: ' + v.township);
+    if(v.village)     _distLines.push('🏡 Village: ' + v.village);
+    if(v.ward)        _distLines.push('Ward: ' + v.ward);
+    if(v.schoolDist || v.school_dist) _distLines.push('🏫 School: ' + (v.schoolDist || v.school_dist));
+    _distEl.style.whiteSpace = 'pre-line';
+    _distEl.textContent = _distLines.length ? _distLines.join('\n') : '\u2014';
+  }
 
   // Central Committee badge
   const _ccKey = (v.precinctName || '').toUpperCase();
@@ -4828,8 +4978,8 @@ function updateGenerateBtn(){
   const hint = document.getElementById('generate-hint');
   const norm = s => (s||'').toLowerCase().replace(/\s*city$/,'').replace(/[^a-z0-9]/g,'');
 
-  const hasArea  = !!document.querySelector('.area-btn.selected');
-  const hasNbhd  = !needsNeighborhood || !!neighborhoodPrec;
+  const hasArea  = canvassMode === 'mail' || !!document.querySelector('.area-btn.selected');
+  const hasNbhd  = canvassMode === 'mail' || !needsNeighborhood || !!neighborhoodPrec;
   const hasRace  = !!canvassFor || canvassMode === 'litdrop' || canvassMode === 'mail';
   const hasMode  = !!canvassMode;
   const ready    = hasMode && hasArea && hasNbhd && hasRace;
@@ -4845,6 +4995,15 @@ function updateGenerateBtn(){
     hint.textContent = `${ALL_VOTERS_RAW.length.toLocaleString()} Fairfield County voters — select an area above`;
     return;
   }
+  // Mail mode with no area — show race-based count hint
+  if(canvassMode === 'mail' && !hasRace){
+    hint.textContent = 'Select a race above to continue';
+    return;
+  }
+  if(canvassMode === 'mail' && hasRace){
+    hint.textContent = canvassFor ? `Ready — canvassing for ${canvassFor}` : 'Ready to choose filters';
+    return;
+  }
 
   // Count voters matching current selections
   let list = ALL_VOTERS_RAW;
@@ -4858,7 +5017,9 @@ function updateGenerateBtn(){
   }
   if(filterField && filterDistrict){
     const want = norm(filterDistrict);
-    list = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    const filtered = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    // Only apply if it actually matches some voters — if district fields are empty in D1, skip filter
+    if(filtered.length > 0) list = filtered;
   }
 
   if(!hasNbhd){
@@ -4969,7 +5130,15 @@ function showLabelHistory(dataIdx){
   // Household members
   const hhMembers = v.voters && v.voters.length
     ? v.voters.map(vn => {
-        const [fn, ln, a, po] = Array.isArray(vn) ? vn : [vn.firstName, vn.lastName, vn.age, vn.presOnly];
+        let fn, ln, a, po;
+        if(Array.isArray(vn)){
+          [fn, ln, a, po] = vn;
+        } else {
+          // voterFromAPI decoded object: {name:'First Last', age, presOnly}
+          const parts = (vn.name||'').trim().split(' ');
+          fn = parts[0]||''; ln = parts.slice(1).join(' ')||'';
+          a = vn.age; po = vn.presOnly;
+        }
         const isThis = fn===first && ln===last;
         return `<div style="padding:5px 0;border-bottom:1px solid var(--border);${isThis?'background:var(--accent-bg);border-radius:4px;padding:5px 6px;':''}">
           <span style="font-weight:${isThis?700:400};font-size:12px;color:var(--text);">${fn} ${ln}</span>
@@ -4988,9 +5157,17 @@ function showLabelHistory(dataIdx){
     const _ln = _hD?'D':v.donations.some(d=>d.lean==='R')?'R':'O';
     const _lc = _ln==='D'?'var(--strong)':_ln==='R'?'var(--danger)':'var(--text-muted)';
     const _ll = _ln==='D'?'Dem donor':_ln==='R'?'R donor':'Ind donor';
+    const _orgLines = v.donations.map(d =>
+      '<div style="display:flex;justify-content:space-between;gap:6px;font-size:10px;color:var(--text-muted);padding:2px 0;border-bottom:1px solid var(--border);">'+
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+d.committee+'</span>'+
+      '<span style="white-space:nowrap;font-weight:600;color:'+(d.lean==='D'?'var(--strong)':d.lean==='R'?'var(--danger)':'var(--text-muted)')+';">$'+d.amount.toFixed(0)+'</span>'+
+      '</div>'
+    ).join('');
     _donorHtml = '<div style="margin-top:8px;padding:7px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border);">'
-      + '<span style="font-size:11px;color:'+_lc+';font-weight:700;">💰 '+_ll+' — $'+_dt.toFixed(0)+' total</span>'
-      + (_hD&&_dT!==_dt?' <span style="font-size:11px;color:var(--text-muted);">($'+_dT.toFixed(0)+' to Dems)</span>':'')
+      + '<div style="font-size:11px;color:'+_lc+';font-weight:700;margin-bottom:4px;">💰 '+_ll+' — $'+_dt.toFixed(0)+' total'
+      + (_hD&&_dT!==_dt?' <span style="font-size:10px;color:var(--text-muted);font-weight:400;">($'+_dT.toFixed(0)+' to Dems)</span>':'')
+      + '</div>'
+      + _orgLines
       + '</div>';
   }
   content.innerHTML = `
@@ -5012,7 +5189,7 @@ function showLabelHistory(dataIdx){
         ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:4px 0;">No voting history on file</div>'
         : '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + voteDots + '</div>'
       }
-      ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}</div>` : ''}
+      ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}${v.lastPrimaryYear ? ' (' + v.lastPrimaryYear + ')' : ''}</div>` : ''}
       ${v.specialsVoted ? `<div style="font-size:11px;color:var(--text-muted);">${v.specialsVoted} special elections</div>` : ''}
     </div>
 
@@ -5111,54 +5288,18 @@ function openMailFilter(){
   const ccSection = document.getElementById('mf-cc-section');
   if(ccSection) ccSection.style.display = adminSession ? '' : 'none';
 
-  // CD12 mail: ask whether to include voters outside Fairfield County
-  if(canvassMode === 'mail' && filterField === 'congDist' && filterDistrict === '12'){
-    _showCd12CountyPrompt(function(){
-      document.getElementById('mail-filter-overlay').classList.add('open');
+  // Mail canvassing: hide location/district/ward/cc filters
+  if(canvassMode === 'mail'){
+    document.querySelectorAll('#mail-filter-overlay .mf-section').forEach(sec => {
+      const toggle = sec.querySelector('input[type=checkbox]');
+      if(!toggle) return;
+      if(['mf-loc-toggle','mf-district-toggle','mf-ward-toggle','mf-cc-toggle'].includes(toggle.id)){
+        sec.style.display = 'none';
+      } else { sec.style.display = ''; }
     });
-    return;
   }
 
   document.getElementById('mail-filter-overlay').classList.add('open');
-}
-
-function _showCd12CountyPrompt(callback){
-  // Reuse or create a simple modal
-  let dlg = document.getElementById('cd12-county-dlg');
-  if(!dlg){
-    dlg = document.createElement('div');
-    dlg.id = 'cd12-county-dlg';
-    dlg.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
-    dlg.innerHTML = `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px 24px;max-width:420px;width:100%;">
-        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">📬 CD-12 Mail List</div>
-        <div style="font-size:14px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;">
-          Congressional District 12 includes voters outside Fairfield County.
-          Those voters can only be reached by mail — not door-to-door.<br><br>
-          Would you like to include them in this mail list?
-        </div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <button id="cd12-yes-btn" style="background:var(--accent);color:#fff;border:none;border-radius:9px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
-            Yes — include all CD-12 voters
-          </button>
-          <button id="cd12-no-btn" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">
-            No — Fairfield County only
-          </button>
-        </div>
-      </div>`;
-    document.body.appendChild(dlg);
-  }
-  dlg.style.display = 'flex';
-  document.getElementById('cd12-yes-btn').onclick = function(){
-    _cd12IncludeOutsideFairfield = true;
-    dlg.style.display = 'none';
-    callback();
-  };
-  document.getElementById('cd12-no-btn').onclick = function(){
-    _cd12IncludeOutsideFairfield = false;
-    dlg.style.display = 'none';
-    callback();
-  };
 }
 
 function mfTogglePanel(panel){
@@ -5303,7 +5444,6 @@ function applyMailFilter(useFilters){
   } else {
     mailFilterAge = null; mailFilterPresOnly = false; mailFilterLocs = [];
     mailFilterDistrict = null; mailFilterWards = []; mailFilterCcPrecincts = [];
-    _cd12IncludeOutsideFairfield = false;
   }
 
   runMailCanvass();
@@ -5354,7 +5494,11 @@ function applyMailFiltersToVoters(vlist){
         CD12:{field:'congDist', value:'12TH CONGRESSIONAL'}
       };
       const dm = distMap[districtToCheck];
-      if(dm && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
+      // Only apply district filter if voters actually have district data populated
+      if(dm){
+        const hasDistrictData = result.some(v2 => (v2[dm.field]||'').trim().length > 0);
+        if(hasDistrictData && !(v[dm.field]||'').toUpperCase().includes(dm.value.toUpperCase())) return false;
+      }
     }
     // Donor filter
     if(mailSortDonors && !(v.donations && v.donations.length)) return false;
@@ -5363,9 +5507,10 @@ function applyMailFiltersToVoters(vlist){
       const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
       if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
     }
-    // Ward filter
+    // Ward filter — only apply if voters actually have ward data
     if(!mailSortDonors && mailFilterWards.length){
-      if(!mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
+      const hasWardData = result.some(v2 => (v2.ward||'').trim().length > 0);
+      if(hasWardData && !mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
     }
     // Central committee precinct filter
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
@@ -5388,15 +5533,21 @@ async function runMailCanvass(){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
-      if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
-      else if(areaField === 'st_house') fetchParams.st_house = areaValue;
-      else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
-      else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
-      else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
-      else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-      if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
-      if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-      if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
+      // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
+      if(canvassMode === 'mail'){
+        // HD-69 and CD-12 span multiple counties — no county filter
+        const _crossCounty = (filterField === 'congDist') ||
+                             (filterField === 'stHouse' && filterDistrict === '69');
+        if(!_crossCounty) fetchParams.county_num = '23';
+      } else {
+        if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
+        else if(areaField === 'st_house') fetchParams.st_house = areaValue;
+        else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
+        else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
+        else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
+        else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
+        // Don't filter by district at DB level — fields empty in D1
+      }
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
@@ -5448,6 +5599,9 @@ async function runMailCanvass(){
     }
     _postRenderContactState = null;
   }
+  // Pre-populate donor org chips now that voters are loaded
+  _populateDonorOrgChips();
+
   let filtered = applyMailFiltersToVoters(base);
   if(!filtered.length){ toast('No voters match those filters — try broadening your criteria.',true); return; }
   filtered.forEach(v=>{ v.assignment='mail'; });
@@ -5475,6 +5629,17 @@ async function runMailCanvass(){
 let _mqPendingList = [];
 let _mqScore = 'all'; // 'all' | 'strong' | 'leans' | 'leansstrong'
 let _mqMailMode = 'household'; // 'household' | 'individual'
+
+function mqSetMode(mode, btn){
+  _mqMailMode = mode;
+  const hhBtn  = document.getElementById('mq-mode-hh');
+  const indBtn = document.getElementById('mq-mode-ind');
+  const active = 'background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;';
+  const inactive = 'background:var(--surface2);border:1.5px solid var(--border);color:var(--text);';
+  if(hhBtn)  hhBtn.style.cssText  = hhBtn.style.cssText.replace(/background:[^;]+;border:[^;]+;color:[^;]+;/, mode==='household'  ? active : inactive);
+  if(indBtn) indBtn.style.cssText = indBtn.style.cssText.replace(/background:[^;]+;border:[^;]+;color:[^;]+;/, mode==='individual' ? active : inactive);
+  _mqRebuildQuickPicks();
+}
 
 function mqPickScore(btn){
   _mqScore = btn.dataset.score;
@@ -5523,6 +5688,12 @@ function _mqRebuildQuickPicks(){
 function showMailQtyPicker(voterList){
   _mqPendingList = voterList;
   _mqScore = 'all';
+  _mqMailMode = 'household';
+  // Reset mode buttons
+  const hhBtn = document.getElementById('mq-mode-hh');
+  const indBtn = document.getElementById('mq-mode-ind');
+  if(hhBtn)  { hhBtn.style.background='var(--fci-sky)'; hhBtn.style.borderColor='var(--fci-sky)'; hhBtn.style.color='#fff'; }
+  if(indBtn) { indBtn.style.background='var(--surface2)'; indBtn.style.borderColor='var(--border)'; indBtn.style.color='var(--text)'; }
   // Reset score buttons
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
     const isAll = b.dataset.score === 'all';
@@ -5619,7 +5790,8 @@ function pickMode(mode){
   if(_genBtn) _genBtn.textContent = 'Generate Routes →';
   var _ldOpt2=document.getElementById('litdrop-option'); if(_ldOpt2)_ldOpt2.style.display='none';
   // Reset area/race/nbhd steps
-  wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
+  wizHide('step-mail-level'); wizHide('step-nbhd'); wizHide('step-race'); wizHide('step-generate');
+  _mailLevel=''; _cd12Counties=['23'];
 
   canvassMode = mode;
   document.getElementById('mode-door').classList.toggle('selected', mode === 'door');
@@ -5645,9 +5817,18 @@ function pickMode(mode){
     document.getElementById('chip-mode').textContent = '✉️ By Mail';
     document.getElementById('change-mode').style.display = 'inline';
     document.getElementById('generate-btn').textContent = 'Choose Filters →';
-    // Show area step — user picks city, then clicks Generate → filter opens
-    document.getElementById('step-area-wrapper').style.display = 'block';
-    wizOpen('step-area');
+
+    // If a campaign race is already locked, skip level + race entirely
+    if(window._volAutoRace || (candidateSession && candidateSession.focusAreas && candidateSession.focusAreas.district && candidateSession.focusAreas.district !== 'all')){
+      _applyLockedRaceToMailWizard();
+      updateGenerateBtn();
+      return;
+    }
+
+    // No locked race — show level picker
+    document.getElementById('step-area-wrapper').style.display = 'none';
+    _mailLevel = '';
+    wizOpen('step-mail-level');
     updateGenerateBtn();
     return;
   }
@@ -5876,10 +6057,136 @@ function openMapsChoice(){
   pick.style.display = 'flex';
 }
 
+// ── MAIL LEVEL FLOW ─────────────────────────────────────────
+// When a campaign has a locked race, skip level+race steps in mail mode
+function _applyLockedRaceToMailWizard(){
+  // Use _volAutoRace if set (volunteer flow), else derive from candidateSession
+  let raceLabel = canvassFor;
+  let field     = filterField;
+  let district  = filterDistrict;
+
+  if(!raceLabel && candidateSession){
+    const fa = candidateSession.focusAreas || {};
+    const distMap = {
+      HD73: { field:'stHouse',  value:'73', race:'State House District 73' },
+      HD69: { field:'stHouse',  value:'69', race:'State House District 69' },
+      SD20: { field:'stSenate', value:'20', race:'State Senate District 20' },
+      CD12: { field:'congDist', value:'12', race:'U.S. House — District 12' },
+    };
+    const d = distMap[fa.district];
+    if(d){ raceLabel = d.race; field = d.field; district = d.value; }
+  }
+
+  canvassFor     = raceLabel;
+  filterField    = field;
+  filterDistrict = district;
+
+  // Collapse/hide level and race steps — show locked chip
+  wizHide('step-mail-level');
+  document.getElementById('body-race').style.display = 'none';
+  document.getElementById('chip-race').style.display = 'inline';
+  document.getElementById('chip-race').textContent = '🔒 ' + (raceLabel || 'Campaign Race');
+  document.getElementById('change-race-btn').style.display = 'none'; // can't change when locked
+  wizShow('step-race'); // show the collapsed chip so user sees what race is set
+
+  // For CD12 mail — show county picker; for others — go straight to filters
+  if(field === 'congDist' && district === '12'){
+    _cd12Counties = [];
+    document.querySelectorAll('#cd12-county-chips [data-cd12-county]').forEach(c=>{
+      // Pre-select Fairfield by default
+      if(c.dataset.cd12County === '23') c.classList.add('sel');
+      else c.classList.remove('sel');
+    });
+    document.getElementById('cd12-county-overlay').style.display = 'flex';
+  } else {
+    wizShow('step-generate');
+    _openSimpleMailFilter();
+  }
+}
+
+
+function pickMailLevel(level){
+  _mailLevel = level;
+  const labels = { federal:'🇺🇸 Federal', state:'🏛️ State', local:'🏘️ Local' };
+  document.getElementById('body-mail-level').style.display = 'none';
+  document.getElementById('chip-mail-level').style.display = 'inline';
+  document.getElementById('chip-mail-level').textContent = labels[level] || level;
+  document.getElementById('change-mail-level').style.display = 'inline';
+  // step-race is inside step-area-wrapper which is hidden in mail mode —
+  // reveal the wrapper but keep step-area and step-nbhd hidden
+  const wrapper = document.getElementById('step-area-wrapper');
+  if(wrapper) wrapper.style.display = 'block';
+  wizHide('step-area');
+  wizHide('step-nbhd');
+  _filterRacesByMailLevel(level);
+  wizOpen('step-race');
+}
+
+function _filterRacesByMailLevel(level){
+  const body = document.getElementById('body-race');
+  if(!body) return;
+  const groups = body.querySelectorAll('.race-group-label');
+  groups.forEach(label => {
+    const groupName = label.textContent.trim();
+    let show = false;
+    if(level === 'federal') show = groupName === 'Federal';
+    if(level === 'state')   show = groupName === 'Statewide' || groupName === 'State Legislature';
+    if(level === 'local')   show = !['Federal','Statewide','State Legislature'].includes(groupName);
+    label.style.display = show ? '' : 'none';
+    let sibling = label.nextElementSibling;
+    while(sibling && !sibling.classList.contains('race-group-label')){
+      sibling.style.display = show ? '' : 'none';
+      sibling = sibling.nextElementSibling;
+    }
+  });
+}
+
+function resetMailToLevel(){
+  _mailLevel = '';
+  document.getElementById('body-mail-level').style.display = '';
+  document.getElementById('chip-mail-level').style.display = 'none';
+  document.getElementById('change-mail-level').style.display = 'none';
+  // Re-hide wrapper — mail mode doesn't use the area step
+  const wrapper = document.getElementById('step-area-wrapper');
+  if(wrapper) wrapper.style.display = 'none';
+  wizHide('step-race'); wizHide('step-generate');
+  canvassFor = ''; filterField = ''; filterDistrict = '';
+  const body = document.getElementById('body-race');
+  if(body) body.querySelectorAll('.race-group-label,.race-group').forEach(el => el.style.display = '');
+}
+
+function toggleCd12County(btn){ btn.classList.toggle('sel'); }
+
+function confirmCd12Counties(){
+  const chips = document.querySelectorAll('#cd12-county-chips [data-cd12-county]');
+  _cd12Counties = [];
+  chips.forEach(c => {
+    if(c.classList.contains('sel')) _cd12Counties.push(c.dataset.cd12County);
+  });
+  if(!_cd12Counties.length){ toast('Select at least one county', true); return; }
+  document.getElementById('cd12-county-overlay').style.display = 'none';
+  _openSimpleMailFilter();
+}
+
+function _openSimpleMailFilter(){
+  document.querySelectorAll('#mail-filter-overlay .mf-section').forEach(sec => {
+    const toggle = sec.querySelector('input[type=checkbox]');
+    if(!toggle) return;
+    if(['mf-loc-toggle','mf-district-toggle','mf-ward-toggle','mf-cc-toggle'].includes(toggle.id)){
+      sec.style.display = 'none';
+    } else {
+      sec.style.display = '';
+    }
+  });
+  // Pre-populate donor org chips if voters already loaded
+  if(ALL_VOTERS_RAW && ALL_VOTERS_RAW.length) _populateDonorOrgChips();
+  document.getElementById('mail-filter-overlay').classList.add('open');
+}
+
 async function generateRoutes(){
   _litDropMode = (canvassMode === 'litdrop'); // auto-set for wizard lit-drop mode
   if(!canvassMode){ toast('Select Door to Door or By Mail first', true); return; }
-  if(!document.querySelector('.area-btn.selected')){
+  if(canvassMode !== 'mail' && !document.querySelector('.area-btn.selected')){
     toast('Select an area first', true); return;
   }
   if(needsNeighborhood && !neighborhoodPrec){
@@ -5888,9 +6195,9 @@ async function generateRoutes(){
   if(!canvassFor && canvassMode !== 'litdrop' && canvassMode !== 'mail'){ toast('Select a race first', true); return; }
   if(canvassMode === 'litdrop') canvassFor = canvassFor || 'Literature Drop';
 
-  // Mail mode — open filter directly, runMailCanvass handles its own fetching
+  // Mail mode — open simplified filter
   if(canvassMode === 'mail'){
-    openMailFilter();
+    _openSimpleMailFilter();
     return;
   }
 
@@ -5969,8 +6276,13 @@ async function generateRoutes(){
   // (mail mode already handled above)
 
   await geocodeAll(voters);
-  const res=clusterVoters(voters);
-  walkClusters=res.walk; mailList=res.mail;
+  // Separate mail-only households (assisted living/dorms) before clustering
+  const _mailOnlyVoters = voters.filter(v => v.mailOnly);
+  const _doorVoters = voters.filter(v => !v.mailOnly);
+  const res=clusterVoters(_doorVoters);
+  walkClusters=res.walk;
+  // Combine clustered mail list with mail-only households
+  mailList=[...res.mail, ..._mailOnlyVoters];
   const threshFt = Math.round((res.thresh||0.12) * 5280);
   walkClusters.forEach((cl,ci)=>cl.forEach(v=>{v.assignment=`walk-${ci+1}`;v.clusterNum=ci+1;}));
   mailList.forEach(v=>{v.assignment='mail';});
@@ -7542,6 +7854,7 @@ function exportCandidateCSV(){
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
 window._realMaybeCollectVolInfo = maybeCollectVolInfo;
+window._realDoAuthLogin = doAuthLogin;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 
@@ -7600,6 +7913,12 @@ if('serviceWorker' in navigator){
           onkeydown="if(event.key==='Enter')doVoterLookup()"
           style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
       </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;">Street Address <span style="font-weight:400;opacity:.6;">(optional — helps narrow results)</span></label>
+      <input id="vlookup-addr" type="text" placeholder="e.g. 123 Main St" autocomplete="street-address"
+        onkeydown="if(event.key==='Enter')doVoterLookup()"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px 12px;border-radius:8px;outline:none;box-sizing:border-box;font-family:inherit;">
     </div>
     <button id="vlookup-btn" onclick="doVoterLookup()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:14px;font-weight:700;padding:11px;border-radius:8px;cursor:pointer;font-family:inherit;margin-bottom:14px;">Search →</button>
     <div id="vlookup-err" style="display:none;font-size:12px;color:var(--danger);margin-bottom:10px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;"></div>

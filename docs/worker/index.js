@@ -448,6 +448,32 @@ async function loadVoters(request, env) {
   return json({ ok: true, loaded: count });
 }
 
+// ── Partial voter update (donations, party, score) ──────────────────────────
+async function updateVoters(request, env) {
+  const body = await request.json();
+  const voters = body.voters;
+  if (!Array.isArray(voters) || !voters.length) return err('voters array required');
+
+  let updated = 0;
+  for (const v of voters) {
+    if (!v.id) continue;
+    // Fetch existing record
+    const existing = await env.DB.prepare('SELECT data FROM voters WHERE id = ?').bind(v.id).first();
+    if (!existing) continue;
+    const record = JSON.parse(existing.data);
+    // Apply updates
+    if (v.donations !== undefined) record.donations = v.donations;
+    if (v.party     !== undefined) record.party     = v.party;
+    if (v.score     !== undefined) record.score     = v.score;
+    // Update party column in DB too
+    const newParty = v.party !== undefined ? v.party : record.party || '';
+    await env.DB.prepare('UPDATE voters SET data = ?, party = ? WHERE id = ?')
+      .bind(JSON.stringify(record), newParty.toUpperCase(), v.id).run();
+    updated++;
+  }
+  return json({ ok: true, updated });
+}
+
 // ── Router ────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env, ctx) {
@@ -498,7 +524,8 @@ export default {
     const camMatch = pathname.match(/^\/api\/campaigns\/(.+)$/);
     if (camMatch && method === 'DELETE') return deleteCampaign(decodeURIComponent(camMatch[1]), env);
 
-    if (pathname === '/api/admin/load-voters' && method === 'POST') return loadVoters(request, env);
+    if (pathname === '/api/admin/load-voters'   && method === 'POST') return loadVoters(request, env);
+    if (pathname === '/api/admin/update-voters' && method === 'POST') return updateVoters(request, env);
 
     return err('Not found', 404);
   },

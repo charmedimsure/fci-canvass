@@ -30,6 +30,7 @@ def parse_vote_year(col):
     return int(m.group(1)) if m else None
 
 def normalize_address(row):
+    import re as _re
     # Ohio SOS format: RESIDENTIAL_ADDRESS1 is a full pre-formatted address
     addr = str(row.get('RESIDENTIAL_ADDRESS1', '') or '').strip()
     if not addr:
@@ -45,7 +46,11 @@ def normalize_address(row):
         apt = str(row.get('RESIDENTIAL_SECONDARY_ADDR', '') or '').strip()
         if apt:
             addr += ' ' + apt
-    return addr.upper()
+    addr = addr.upper()
+    # Normalize LOT numbers to APT format so trailer park residents group as one household
+    # e.g. "2445 COLUMBUS-LANCASTER RD NW LOT 42" → base: "2445 COLUMBUS-LANCASTER RD NW" apt: "LOT 42"
+    addr = _re.sub(r'\s+LOT\s+(\S+)', r' APT LOT \1', addr)
+    return addr
 
 def normalize_city(row):
     city = row.get('RESIDENTIAL_CITY', '') or row.get('CITY', '') or ''
@@ -75,19 +80,23 @@ def get_dob_year(row):
 
 def get_districts(row):
     return {
-        'stHouse':  str(row.get('OH HOUSE',   '') or row.get('STATE_HOUSE',  '') or '').strip(),
-        'stSenate': str(row.get('OH SENATE',  '') or row.get('STATE_SENATE', '') or '').strip(),
-        'congDist': str(row.get('US CONG',    '') or row.get('US_CONGRESS',  '') or '').strip(),
+        'stHouse':  str(row.get('STATE_REPRESENTATIVE_DISTRICT','') or row.get('OH HOUSE','') or row.get('STATE_HOUSE','') or '').strip(),
+        'stSenate': str(row.get('STATE_SENATE_DISTRICT','') or row.get('OH SENATE','') or row.get('STATE_SENATE','') or '').strip(),
+        'congDist': str(row.get('CONGRESSIONAL_DISTRICT','') or row.get('US CONG','') or row.get('US_CONGRESS','') or '').strip(),
         'township': str(row.get('TOWNSHIP',   '') or '').strip().upper(),
-        'municipality': str(row.get('CITY',   '') or row.get('RESIDENTIAL_CITY', '') or '').strip().upper(),
+        'municipality': str(row.get('CITY',   '') or row.get('RESIDENTIAL_CITY','') or '').strip().upper(),
         'village':  str(row.get('VILLAGE',    '') or '').strip().upper(),
-        'ward':     str(row.get('CITY WARD',  '') or '').strip().upper(),
-        'precinctName': str(row.get('PRECNAME','') or row.get('PRECINCT_NAME','') or '').strip().upper(),
-        'countyNum': str(row.get('CNTYIDNUM', '') or row.get('COUNTY_NUMBER','') or '').strip(),
+        'ward':     str(row.get('WARD','') or row.get('CITY WARD','') or '').strip().upper(),
+        'precinctName': str(row.get('PRECINCT_NAME','') or row.get('PRECNAME','') or '').strip().upper(),
+        'countyNum': str(row.get('COUNTY_NUMBER','') or row.get('CNTYIDNUM','') or '').strip(),
+        'schoolDist': str(row.get('LOCAL_SCHOOL_DISTRICT','') or row.get('CITY_SCHOOL_DISTRICT','') or row.get('SCHOOL DISTRICT','') or '').strip(),
     }
 
 def household_key(addr, city, zip_code):
-    return (addr.strip().upper(), city.strip().upper(), str(zip_code or '').strip()[:5])
+    import re as _re
+    # Strip apartment/lot suffix so all units at same address group together
+    base_addr = _re.sub(r'\s+(APT|LOT|UNIT|#|STE|SUITE)\s+.*$', '', addr.strip().upper())
+    return (base_addr, city.strip().upper(), str(zip_code or '').strip()[:5])
 
 def make_id(name, addr, city):
     raw = f"{name}|{addr}|{city}".lower()
@@ -197,23 +206,30 @@ def build_voter_record(hh_key, members):
     generals = [2024, 2022, 2020, 2018, 2016, 2014]
     generals_voted = sum(1 for y in generals if y in years_voted)
 
-    # Last primary
+    # Last primary — scan from most recent year backwards
     last_primary = ''
+    last_primary_year = None
+    # Sort election cols by year descending to find the most recent primary
+    primary_cols = sorted(
+        [(col, yr) for (col, yr) in election_cols if 'PRIM' in col.upper() or 'PRIMARY' in col.upper()],
+        key=lambda x: x[1], reverse=True
+    )
     for (row, election_cols, _, _, _, _) in members:
-        for (col, yr) in election_cols:
-            if 'PRIM' in col.upper() or 'PRIMARY' in col.upper():
-                val = str(row.get(col, '') or '').strip().upper()
-                if val and val not in ('', '0', 'N', 'NO'):
-                    # Try to detect D/R primary
-                    if 'D' in val:
-                        last_primary = 'D'
-                        break
-                    elif 'R' in val:
-                        last_primary = 'R'
-                        break
-                    else:
-                        last_primary = 'D'  # non-partisan counts as D-leaning
-                        break
+        for (col, yr) in primary_cols:
+            val = str(row.get(col, '') or '').strip().upper()
+            if val and val not in ('', '0', 'N', 'NO'):
+                if 'D' in val:
+                    last_primary = 'D'
+                    last_primary_year = yr
+                    break
+                elif 'R' in val:
+                    last_primary = 'R'
+                    last_primary_year = yr
+                    break
+                else:
+                    last_primary = 'D'
+                    last_primary_year = yr
+                    break
         if last_primary:
             break
 
@@ -249,7 +265,7 @@ def build_voter_record(hh_key, members):
     township      = dists['township']
     municipality  = dists['municipality']
     village       = dists['village']
-    school_dist   = str(row0.get('SCHOOL_DISTRICT','') or row0.get('SCHOOL DISTRICT','') or '').strip()
+    school_dist   = dists.get('schoolDist','') or str(row0.get('LOCAL_SCHOOL_DISTRICT','') or row0.get('SCHOOL DISTRICT','') or '').strip()
 
     # Generate ID
     vid = make_id(display_name, addr, city)
@@ -270,6 +286,7 @@ def build_voter_record(hh_key, members):
         'voting':       str(generals_voted),
         'lp':           last_primary,
         'lastPrimary':  last_primary,
+        'lastPrimaryYear': last_primary_year,
         'ages':         ages_str,
         'vns':          vns,
         'hh':           len(members),
@@ -286,6 +303,8 @@ def build_voter_record(hh_key, members):
         'ward':         '',
         'score':        None,
         'donations':    [],
+        'schoolDist':   school_dist,
+        'mailOnly':     len(members) > 8,  # large households = assisted living/dorms → mail only
         'countyNum':    dists['countyNum'] or str(row0.get('COUNTY_NUMBER','') or row0.get('CNTYIDNUM','') or '').strip(),
     }
     return record
@@ -438,6 +457,18 @@ def main():
     if args.dry_run:
         print("\nDry run — sample record:")
         print(json.dumps(records[0], indent=2, default=str))
+        # Show district field sample
+        print("\nDistrict field samples from first 3 records:")
+        for r in records[:3]:
+            print(f"  stHouse={repr(r.get('stHouse',''))} stSenate={repr(r.get('stSenate',''))} congDist={repr(r.get('congDist',''))} countyNum={repr(r.get('countyNum',''))}")
+        # Also dump raw CSV keys that match district columns
+        # Find the original row by checking all_voters
+        if raw:
+            sample_row = raw[0][0]
+            dist_keys = [k for k in sample_row.keys() if any(x in k.upper() for x in ['HOUSE','SENATE','CONG','CNTY','COUNTY','DISTRICT','WARD','PRECINCT','PRECNAME','TOWNSHIP','VILLAGE','MUNICIPAL'])]
+            print(f"  All district-related columns:")
+            for k in dist_keys:
+                print(f"    {repr(k)}: {repr(sample_row.get(k,''))}")
         print(f"\nWould upload {len(records):,} records. Run without --dry-run to upload.")
         return
 
