@@ -448,6 +448,20 @@ async function loadVoters(request, env) {
   return json({ ok: true, loaded: count });
 }
 
+// ── Admin voter search (no party filter) ────────────────────────────────────
+async function searchVotersAdmin(request, env) {
+  const p = new URL(request.url).searchParams;
+  const where = [];
+  const params = [];
+  if (p.get('last_name')) { where.push("data LIKE ?"); params.push('%' + p.get('last_name').toUpperCase() + '%'); }
+  const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const limit = Math.min(parseInt(p.get('limit') || '20'), 100);
+  params.push(limit);
+  const result = await env.DB.prepare(`SELECT data FROM voters ${whereSQL} LIMIT ?`).bind(...params).all();
+  const voters = result.results.map(r => JSON.parse(r.data));
+  return json({ voters, count: voters.length });
+}
+
 // ── Partial voter update (donations, party, score) ──────────────────────────
 async function updateVoters(request, env) {
   const body = await request.json();
@@ -525,7 +539,8 @@ export default {
     if (camMatch && method === 'DELETE') return deleteCampaign(decodeURIComponent(camMatch[1]), env);
 
     if (pathname === '/api/admin/load-voters'   && method === 'POST') return loadVoters(request, env);
-    if (pathname === '/api/admin/update-voters' && method === 'POST') return updateVoters(request, env);
+    if (pathname === '/api/admin/update-voters'  && method === 'POST') return updateVoters(request, env);
+    if (pathname === '/api/admin/search-voters'  && method === 'GET')  return searchVotersAdmin(request, env);
 
     return err('Not found', 404);
   },

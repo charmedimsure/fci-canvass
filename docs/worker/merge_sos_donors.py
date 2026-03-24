@@ -49,15 +49,19 @@ def norm(s):
     return (s or '').upper().replace(' ','').replace('.','').replace(',','').replace('-','')
 
 def addr_match(donor_addr, voter_addr):
-    """Fuzzy address match — check if street number and first word of street match"""
-    da = donor_addr.upper().split()
-    va = voter_addr.upper().split()
+    """Fuzzy address match — street number must match, strip punctuation"""
+    import re
+    def clean(s):
+        return re.sub(r'[^A-Z0-9 ]', '', s.upper()).split()
+    da = clean(donor_addr)
+    va = clean(voter_addr)
     if not da or not va: return False
     # Street number must match
     if da[0] != va[0]: return False
-    # At least one more word must match
-    da_words = set(da[1:])
-    va_words = set(va[1:])
+    # For short streets just number match is enough, otherwise check one word
+    if len(da) < 2 or len(va) < 2: return True
+    da_words = set(w for w in da[1:] if len(w) > 2)
+    va_words = set(w for w in va[1:] if len(w) > 2)
     return bool(da_words & va_words)
 
 def load_donors(csv_path):
@@ -131,10 +135,13 @@ def main():
         if i % 50 == 0 and i > 0:
             print(f"  {i}/{len(by_last)} names checked, {matched} matches so far...")
         try:
-            result = api_get('/api/voters', {'last_name': last_name, 'limit': 20})
+            result = api_get('/api/admin/search-voters', {'last_name': last_name, 'limit': 20})
             voters = result.get('voters', [])
+            if voters:  # Debug any hits
+                print(f"  HIT {last_name}: {len(voters)} voters returned")
         except Exception as e:
-            print(f"  WARNING: lookup failed for {last_name}: {e}")
+            if i < 5:
+                print(f"  WARNING: lookup failed for {last_name}: {e}")
             time.sleep(0.5)
             continue
 
@@ -146,9 +153,10 @@ def main():
                 # Match: last name already matched by API, check address
                 if not addr_match(d['addr'], voter_addr):
                     continue
-                # Also verify first name if available
-                if d['fn'] and d['fn'].upper() not in voter_name:
-                    continue
+                # Verify first name if available (lenient — check first 3 chars)
+                if d['fn'] and len(d['fn']) >= 3:
+                    if d['fn'][:3].upper() not in voter_name:
+                        continue
 
                 matched += 1
                 donation = {

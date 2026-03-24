@@ -2145,17 +2145,17 @@ function _voterAPIParams(focusAreas){
     SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
     CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
   };
-  // District fields are empty in D1 — never filter by district at DB level
-  // applyFilters handles client-side district filtering
-  // For mail mode, scope by county
+  // District fields now populated — filter at DB level
   if(canvassMode === 'mail'){
-    // HD-69 and CD-12 span multiple counties — fetch all, filter client-side
+    if(filterField === 'stHouse')  params.st_house  = filterDistrict;
+    if(filterField === 'stSenate') params.st_senate = filterDistrict;
+    if(filterField === 'congDist') params.cong_dist = filterDistrict;
+    // HD-69 and CD-12 span multiple counties — no county filter
     const crossCountyRaces = ['CD12', 'HD69'];
     const isCrossCounty = (fa.district && crossCountyRaces.includes(fa.district)) ||
                           (filterField === 'congDist') ||
                           (filterField === 'stHouse' && filterDistrict === '69');
     if(!isCrossCounty) params.county_num = '23';
-    // cross-county races: no county filter, applyFilters handles county selection
   } else if(fa.city && fa.city !== 'all'){
     params.municipality = fa.city.toUpperCase() + ' CITY';
   }
@@ -5048,7 +5048,8 @@ function showMailLabelsOverlay(voterList){
   const _labelData = [];
 
   for(const v of voterList){
-    const _addr = v.address || v.a || '';
+    // Use mailing address for labels if available (e.g. trailer parks, PO Boxes)
+    const _addr = v.mailAddr || v.address || v.a || '';
     const _name = v.name || v.n || '';
     const parts = _addr.split(',').map(s => s.trim());
     let line1 = _addr, line2 = '';
@@ -5535,6 +5536,9 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
+        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
+        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
+        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
         // HD-69 and CD-12 span multiple counties — no county filter
         const _crossCounty = (filterField === 'congDist') ||
                              (filterField === 'stHouse' && filterDistrict === '69');
@@ -5546,7 +5550,7 @@ async function runMailCanvass(){
         else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
         else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
         else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-        // Don't filter by district at DB level — fields empty in D1
+        // Filter by district at DB level — fields now populated
       }
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
