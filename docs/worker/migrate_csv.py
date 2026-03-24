@@ -164,6 +164,21 @@ def build_households(raw_voters):
     print(f"Grouped into {len(households):,} households")
     return households
 
+def _get_mail_addr(row, res_addr, city, zip5):
+    """Return mailing address if different from residential, else None."""
+    m1 = str(row.get('MADDR1','') or '').strip().upper()
+    m2 = str(row.get('MADDR2','') or '').strip().upper()
+    mc = str(row.get('MCITY','') or '').strip().upper()
+    mz = str(row.get('MZIP','') or '').strip()[:5]
+    if not m1 or m1 == res_addr.split(',')[0].strip():
+        return None  # same as residential, no need to store
+    full = m1
+    if m2: full += ' ' + m2
+    mc_part = mc or city
+    if mc_part: full += ', ' + mc_part
+    if mz: full += ' ' + mz
+    return full or None
+
 def build_voter_record(hh_key, members):
     """Build a single voter record for a household."""
     addr, city, zip5 = hh_key
@@ -304,6 +319,7 @@ def build_voter_record(hh_key, members):
         'score':        None,
         'donations':    [],
         'schoolDist':   school_dist,
+        'mailAddr':     _get_mail_addr(row0, addr, city, zip5),
         'mailOnly':     len(members) > 8,  # large households = assisted living/dorms → mail only
         'countyNum':    dists['countyNum'] or str(row0.get('COUNTY_NUMBER','') or row0.get('CNTYIDNUM','') or '').strip(),
     }
