@@ -1901,6 +1901,32 @@ return{data:data,meta:{fields:hdrs}};}};</script>
           <input type="checkbox" id="m-admin-exclude" style="width:15px;height:15px;accent-color:var(--danger);">
           <label for="m-admin-exclude" style="font-size:13px;color:var(--danger);font-weight:600;cursor:pointer;">Exclude from all lists permanently</label>
         </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">🗺 Correct District Assignment</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">OH House</label>
+              <input id="m-admin-st-house" type="text" placeholder="e.g. 73"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">OH Senate</label>
+              <input id="m-admin-st-senate" type="text" placeholder="e.g. 20"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Congress</label>
+              <input id="m-admin-cong-dist" type="text" placeholder="e.g. 12"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">County #</label>
+              <input id="m-admin-county-num" type="text" placeholder="e.g. 23"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+          </div>
+          <button onclick="saveAdminDistrictFix()" style="width:100%;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:12px;font-weight:700;padding:8px;border-radius:7px;cursor:pointer;font-family:inherit;margin-top:8px;">💾 Save District Fix</button>
+        </div>
       </div>
       <button onclick="saveAdminVoterEdits()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;margin-top:8px;">Save Admin Changes →</button>
     </div>
@@ -3855,6 +3881,32 @@ function _saveAdminVoterEdits(edits){
 
 
 
+async function saveAdminDistrictFix(){
+  if(!mId || !adminSession){ toast('Admin login required', true); return; }
+  const stHouse   = document.getElementById('m-admin-st-house').value.trim();
+  const stSenate  = document.getElementById('m-admin-st-senate').value.trim();
+  const congDist  = document.getElementById('m-admin-cong-dist').value.trim();
+  const countyNum = document.getElementById('m-admin-county-num').value.trim();
+  try {
+    showLoadingOverlay('Saving district fix…');
+    const res = await apiPost('/api/admin/fix-district', {
+      id: mId, stHouse, stSenate, congDist, countyNum
+    });
+    hideLoadingOverlay();
+    if(res.ok){
+      // Update the voter in memory
+      const v = voters.find(v=>v.id===mId) || mailList.find(v=>v.id===mId);
+      if(v){ v.stHouse=stHouse; v.stSenate=stSenate; v.congDist=congDist; v.countyNum=countyNum; }
+      toast('✅ District assignment corrected');
+    } else {
+      toast('Error: ' + (res.error||'unknown'), true);
+    }
+  } catch(e){
+    hideLoadingOverlay();
+    toast('Error saving: ' + e.message, true);
+  }
+}
+
 function saveAdminVoterEdits(){
   if(!mId) return;
   const v = voters.find(x => String(x.id) === String(mId));
@@ -3906,6 +3958,32 @@ function getVoterEdit(id){
   return loadVoterEdits()[String(id)] || {};
 }
 
+
+async function saveAdminDistrictFix(){
+  if(!mId || !adminSession){ toast('Admin login required', true); return; }
+  const stHouse   = document.getElementById('m-admin-st-house').value.trim();
+  const stSenate  = document.getElementById('m-admin-st-senate').value.trim();
+  const congDist  = document.getElementById('m-admin-cong-dist').value.trim();
+  const countyNum = document.getElementById('m-admin-county-num').value.trim();
+  try {
+    showLoadingOverlay('Saving district fix…');
+    const res = await apiPost('/api/admin/fix-district', {
+      id: mId, stHouse, stSenate, congDist, countyNum
+    });
+    hideLoadingOverlay();
+    if(res.ok){
+      // Update the voter in memory
+      const v = voters.find(v=>v.id===mId) || mailList.find(v=>v.id===mId);
+      if(v){ v.stHouse=stHouse; v.stSenate=stSenate; v.congDist=congDist; v.countyNum=countyNum; }
+      toast('✅ District assignment corrected');
+    } else {
+      toast('Error: ' + (res.error||'unknown'), true);
+    }
+  } catch(e){
+    hideLoadingOverlay();
+    toast('Error saving: ' + e.message, true);
+  }
+}
 
 function saveAdminVoterEdits(){
   if(!mId) return;
@@ -4590,6 +4668,10 @@ function openModal(id){
       document.getElementById('m-admin-name').value    = e.name    || '';
       document.getElementById('m-admin-address').value = e.address || '';
       document.getElementById('m-admin-exclude').checked = e.exclude || false;
+      document.getElementById('m-admin-st-house').value   = e.stHouse   !== undefined ? e.stHouse   : (v.stHouse   || '');
+      document.getElementById('m-admin-st-senate').value  = e.stSenate  !== undefined ? e.stSenate  : (v.stSenate  || '');
+      document.getElementById('m-admin-cong-dist').value  = e.congDist  !== undefined ? e.congDist  : (v.congDist  || '');
+      document.getElementById('m-admin-county-num').value = e.countyNum !== undefined ? e.countyNum : (v.countyNum || '');
     }
   }
 

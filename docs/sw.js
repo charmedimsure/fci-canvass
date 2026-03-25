@@ -1,5 +1,5 @@
 // FCI Canvass — Service Worker v4
-const CACHE = 'fci-canvass-20260325100457'; // auto-bumped on deploy
+const CACHE = 'fci-canvass-20260325101633'; // auto-bumped on deploy
 
 const APP_SHELL = [
   './',

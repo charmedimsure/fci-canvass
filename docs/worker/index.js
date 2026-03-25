@@ -448,6 +448,24 @@ async function loadVoters(request, env) {
   return json({ ok: true, loaded: count });
 }
 
+// ── Admin district fix ───────────────────────────────────────────────────────
+async function fixDistrict(request, env) {
+  const body = await request.json();
+  const { id, stHouse, stSenate, congDist, countyNum } = body;
+  if (!id) return err('id required');
+  const existing = await env.DB.prepare('SELECT data FROM voters WHERE id = ?').bind(id).first();
+  if (!existing) return err('Voter not found', 404);
+  const record = JSON.parse(existing.data);
+  if (stHouse   !== undefined) record.stHouse   = stHouse;
+  if (stSenate  !== undefined) record.stSenate  = stSenate;
+  if (congDist  !== undefined) record.congDist  = congDist;
+  if (countyNum !== undefined) record.countyNum = countyNum;
+  await env.DB.prepare(
+    'UPDATE voters SET data=?, st_house=?, st_senate=?, cong_dist=?, county_num=? WHERE id=?'
+  ).bind(JSON.stringify(record), stHouse||'', stSenate||'', congDist||'', countyNum||'', id).run();
+  return json({ ok: true });
+}
+
 // ── Admin voter search (no party filter) ────────────────────────────────────
 async function searchVotersAdmin(request, env) {
   const p = new URL(request.url).searchParams;
@@ -541,6 +559,7 @@ export default {
     if (pathname === '/api/admin/load-voters'   && method === 'POST') return loadVoters(request, env);
     if (pathname === '/api/admin/update-voters'  && method === 'POST') return updateVoters(request, env);
     if (pathname === '/api/admin/search-voters'  && method === 'GET')  return searchVotersAdmin(request, env);
+    if (pathname === '/api/admin/fix-district'   && method === 'POST') return fixDistrict(request, env);
 
     return err('Not found', 404);
   },
