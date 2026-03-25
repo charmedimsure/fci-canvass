@@ -1436,6 +1436,19 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   </div>
 </div>
 
+<!-- MAIL CONTACTED CONFIRMATION OVERLAY -->
+<div id="mail-contacted-overlay" style="display:none;position:fixed;inset:0;z-index:9200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,400px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
+    <div style="font-size:20px;margin-bottom:8px;">✉️ Count as Contacted?</div>
+    <div style="font-size:14px;color:var(--text);margin-bottom:8px;font-weight:600;">Want to count your previous labels as contacted?</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:24px;">This removes them from future mail lists so you don't contact the same households twice.</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="mailContactedConfirm(false)" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Skip</button>
+      <button onclick="mailContactedConfirm(true)" style="flex:2;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;border-radius:9px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">✅ Yes, Count as Contacted</button>
+    </div>
+  </div>
+</div>
+
 <!-- MAIL QUANTITY PICKER OVERLAY -->
 <div id="mail-qty-overlay" style="display:none;position:fixed;inset:0;z-index:3600;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,420px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
@@ -5753,15 +5766,20 @@ function mqConfirm(){
   const scoreFiltered = _mqScoreFiltered();
   const totalIndiv = _mqTotalIndiv(scoreFiltered);
 
+  // Randomize order for independent canvassing so same voters aren't always picked
+  const toSlice = volunteerCampaignId
+    ? scoreFiltered  // candidate mode: keep sorted order (donors first etc.)
+    : [...scoreFiltered].sort(() => Math.random() - 0.5);  // independent: shuffle
+
   // Slice to requested count (by individuals, not households)
   let sliced;
   if(isAll || num >= totalIndiv){
-    sliced = scoreFiltered;
+    sliced = toSlice;
   } else {
     // Build sliced list: take households until we hit num individuals
     sliced = [];
     let count = 0;
-    for(const v of scoreFiltered){
+    for(const v of toSlice){
       const indiv = v.voters && v.voters.length ? v.voters.length : 1;
       if(count + indiv <= num){
         sliced.push(v);
@@ -5777,6 +5795,54 @@ function mqConfirm(){
     }
   }
 
+  voters   = sliced;
+  mailList = sliced;
+  // For candidate campaigns: ask about previous mailing before showing new labels
+  // Only ask if there was a previous batch (mailList already populated)
+  if(volunteerCampaignId && mailList && mailList.length > 0){
+    window._mqPendingSliced = sliced;
+    document.getElementById('mail-contacted-overlay').style.display='flex';
+  } else {
+    voters   = sliced;
+    mailList = sliced;
+    showMailLabelsOverlay(sliced);
+  }
+}
+
+function closeMailLabels(){
+  document.getElementById('mail-labels-overlay').classList.remove('open');
+  document.getElementById('mlo-history-panel').style.display='none';
+  // If canvassing for a candidate, ask if labels have been mailed
+  if(volunteerCampaignId && mailList && mailList.length > 0){
+    document.getElementById('mail-contacted-overlay').style.display='flex';
+  }
+}
+
+function mailContactedConfirm(didMail){
+  document.getElementById('mail-contacted-overlay').style.display='none';
+  const sliced = window._mqPendingSliced || mailList;
+  window._mqPendingSliced = null;
+  // Mark previous batch as contacted if they said yes
+  if(didMail && volunteerCampaignId && mailList && mailList.length > 0){
+    const state = loadContactState(volunteerCampaignId);
+    let count = 0;
+    for(const v of mailList){
+      if(!state[v.id] || state[v.id].contactStatus !== 'contacted'){
+        state[v.id] = {
+          ...(state[v.id] || {}),
+          contactStatus: 'contacted',
+          contactReason: 'mailed',
+          notes: (state[v.id]&&state[v.id].notes)||'',
+          yardSign: false,
+          spokeWith: [],
+        };
+        count++;
+      }
+    }
+    saveContactState(volunteerCampaignId, state);
+    if(count > 0) toast(`✉️ ${count} households marked as contacted`);
+  }
+  // Now show the new labels
   voters   = sliced;
   mailList = sliced;
   showMailLabelsOverlay(sliced);
