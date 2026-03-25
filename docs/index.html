@@ -2153,10 +2153,10 @@ function _voterAPIParams(focusAreas){
   const params = {};
   const fa = focusAreas || {};
   const distMap = {
-    HD73:{field:'st_house',  value:'OHIO ST HOUSE REP 73'},
-    HD69:{field:'st_house',  value:'OHIO ST HOUSE REP 69'},
-    SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
-    CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
+    HD73:{field:'stHouse',  value:'73'},
+    HD69:{field:'stHouse',  value:'69'},
+    SD20:{field:'stSenate', value:'20'},
+    CD12:{field:'congDist', value:'12'},
   };
   // District fields now populated — filter at DB level
   if(canvassMode === 'mail'){
@@ -5029,8 +5029,8 @@ function updateGenerateBtn(){
     list = list.filter(v=>{ const val=norm(v.precinctName||v.precinct||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
   }
   if(filterField && filterDistrict){
-    const want = norm(filterDistrict);
-    const filtered = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    const want = (filterDistrict||'').trim();
+    const filtered = list.filter(v=>{ const val = (v[filterField]||'').trim(); return val && val === want; });
     // Only apply if it actually matches some voters — if district fields are empty in D1, skip filter
     if(filtered.length > 0) list = filtered;
   }
@@ -5046,6 +5046,42 @@ function updateGenerateBtn(){
   }
 }
 
+function _buildHouseholdName(v){
+  // Build a smart household name from vns array
+  // Same last name: "Walter & Marilyn Palmer"
+  // Different last names: "Walter Palmer & Marilyn Smith"
+  // Single voter: "Walter Palmer"
+  const vns = v.vns || v.voters || [];
+  if(!vns || !vns.length){
+    return v.name || v.n || 'Resident';
+  }
+
+  // Parse each voter into {first, last}
+  const people = vns.map(vn => {
+    if(Array.isArray(vn)){
+      return { first: vn[0] || '', last: vn[1] || '' };
+    } else if(vn && typeof vn === 'object'){
+      const parts = (vn.name || '').trim().split(' ');
+      return { first: parts[0] || '', last: parts.slice(1).join(' ') || '' };
+    }
+    return { first: String(vn), last: '' };
+  }).filter(p => p.first);
+
+  if(!people.length) return v.name || v.n || 'Resident';
+  if(people.length === 1) return `${people[0].first} ${people[0].last}`.trim();
+
+  // Check if all share same last name
+  const lastNames = [...new Set(people.map(p => p.last.toUpperCase()).filter(Boolean))];
+  if(lastNames.length === 1 && lastNames[0]){
+    // Same last name — "Walter & Marilyn Palmer"
+    const firsts = people.map(p => p.first).join(' & ');
+    return `${firsts} ${people[0].last}`;
+  } else {
+    // Different last names — "Walter Palmer & Marilyn Smith"
+    return people.map(p => `${p.first} ${p.last}`.trim()).join(' & ');
+  }
+}
+
 function showMailLabelsOverlay(voterList){
   const overlay = document.getElementById('mail-labels-overlay');
   const body = document.getElementById('mlo-body');
@@ -5054,7 +5090,9 @@ function showMailLabelsOverlay(voterList){
   if(panel) panel.style.display = 'none';
 
   const totalIndividuals = voterList.reduce((sum, v) => sum + (v.voters && v.voters.length ? v.voters.length : 1), 0);
-  sub.textContent = `${totalIndividuals} voters across ${voterList.length} households · click any label to see voter history`;
+  sub.textContent = _mqMailMode === 'household'
+    ? `${voterList.length} household labels · click any label to see voter history`
+    : `${totalIndividuals} voters across ${voterList.length} households · click any label to see voter history`;
 
   const labelCards = [];
   // Store per-label voter data for sidebar
@@ -5064,12 +5102,29 @@ function showMailLabelsOverlay(voterList){
     // Use mailing address for labels if available (e.g. trailer parks, PO Boxes)
     const _addr = v.mailAddr || v.address || v.a || '';
     const _name = v.name || v.n || '';
-    const parts = _addr.split(',').map(s => s.trim());
+    const addrParts = _addr.split(',').map(s => s.trim());
     let line1 = _addr, line2 = '';
-    if(parts.length >= 3){ line1 = parts[0]; line2 = parts.slice(1).join(', '); }
-    else if(parts.length === 2){ line1 = parts[0]; line2 = parts[1]; }
+    if(addrParts.length >= 3){ line1 = addrParts[0]; line2 = addrParts.slice(1).join(', '); }
+    else if(addrParts.length === 2){ line1 = addrParts[0]; line2 = addrParts[1]; }
+    // Add OH state abbreviation if not already present
+    if(line2 && !/\bOH\b/.test(line2)){
+      // Insert OH before zip: "LANCASTER 43130" → "LANCASTER OH 43130"
+      line2 = line2.replace(/(\b\d{5}\b)/, 'OH $1').replace(/^OH /, '');
+      if(!/\bOH\b/.test(line2)) line2 += ', OH';
+    }
 
-    if(v.voters && v.voters.length){
+    if(_mqMailMode === 'household'){
+      // ONE label per household — smart name combining
+      const hhName = _buildHouseholdName(v);
+      const dataIdx = _labelData.length;
+      _labelData.push({ v, first: hhName, last: '', age: null, presOnly: false });
+      labelCards.push(
+        `<div class="label-card" data-lid="${dataIdx}" onclick="showLabelHistory(${dataIdx})" style="cursor:pointer;">`
+        + `<div class="lc-name">${hhName}</div>`
+        + `<div class="lc-addr">${line1}${line2?'<br>'+line2:''}</div>`
+        + `</div>`
+      );
+    } else if(v.voters && v.voters.length){
       for(const vn of v.voters){
         let first, last, age, presOnly;
         if(Array.isArray(vn)){
@@ -5206,6 +5261,19 @@ function showLabelHistory(dataIdx){
       ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}${v.lastPrimaryYear ? ' (' + v.lastPrimaryYear + ')' : ''}</div>` : ''}
       ${v.specialsVoted ? `<div style="font-size:11px;color:var(--text-muted);">${v.specialsVoted} special elections</div>` : ''}
     </div>
+
+    ${(()=>{
+      const _dp = [];
+      if(v.congDist)    _dp.push('🇺🇸 CD-' + v.congDist);
+      if(v.stSenate)    _dp.push('🏛 SD-' + v.stSenate);
+      if(v.stHouse)     _dp.push('🏛 HD-' + v.stHouse);
+      if(v.precinctName) _dp.push('📍 ' + v.precinctName);
+      if(v.schoolDist)  _dp.push('🏫 ' + v.schoolDist);
+      return _dp.length ? `<div style="margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Districts</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.7;">${_dp.join('<br>')}</div>
+      </div>` : '';
+    })()}
 
     <div style="margin-bottom:12px;">
       <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Household (${v.voters?v.voters.length:1})</div>
@@ -5502,10 +5570,10 @@ function applyMailFiltersToVoters(vlist){
     const districtToCheck = mailSortDonors ? _mailDonorDistrict : mailFilterDistrict;
     if(districtToCheck){
       const distMap = {
-        HD69:{field:'stHouse',  value:'OHIO ST HOUSE REP 69'},
-        HD73:{field:'stHouse',  value:'OHIO ST HOUSE REP 73'},
-        SD20:{field:'stSenate', value:'OHIO STATE SENATE 20'},
-        CD12:{field:'congDist', value:'12TH CONGRESSIONAL'}
+        HD69:{field:'stHouse',  value:'69'},
+        HD73:{field:'stHouse',  value:'73'},
+        SD20:{field:'stSenate', value:'20'},
+        CD12:{field:'congDist', value:'12'}
       };
       const dm = distMap[districtToCheck];
       // Only apply district filter if voters actually have district data populated
@@ -6795,9 +6863,9 @@ function applyVolunteerFocusToWizard(cam){
   // ── Auto-set canvassFor race from campaign district — skip step-race entirely ──
   if(fa.district && fa.district !== 'all'){
     const distMap = {
-      HD73:  { field:'stHouse',  value:'HD 73',  label:'Ohio House 73',    display:'HD-73',  race:'Ohio House District 73' },
-      HD69:  { field:'stHouse',  value:'HD 69',  label:'Ohio House 69',    display:'HD-69',  race:'Ohio House District 69' },
-      SD20:  { field:'stSenate', value:'SD 20',  label:'Ohio Senate 20',   display:'SD-20',  race:'Ohio State Senate District 20' },
+      HD73:  { field:'stHouse',  value:'73',  label:'Ohio House 73',    display:'HD-73',  race:'Ohio House District 73' },
+      HD69:  { field:'stHouse',  value:'69',  label:'Ohio House 69',    display:'HD-69',  race:'Ohio House District 69' },
+      SD20:  { field:'stSenate', value:'20',  label:'Ohio Senate 20',   display:'SD-20',  race:'Ohio State Senate District 20' },
       CD12:  { field:'congDist', value:'12',      label:'US House Dist 12', display:'CD-12',  race:'U.S. House — District 12' }
     };
     const d = distMap[fa.district];
