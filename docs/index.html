@@ -11,15 +11,16 @@ function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
 // Stub for getVoterEdit — replaced by full implementation in main script
 if(typeof getVoterEdit === 'undefined') window.getVoterEdit = function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
 // Stub for doAuthLogin
-if(typeof doAuthLogin === 'undefined') window.doAuthLogin = function(){ if(typeof window._realDoAuthLogin==='function') window._realDoAuthLogin(); };
+window._doAuthLoginStub = function(){ if(window._realDoAuthLogin && window._realDoAuthLogin !== window._doAuthLoginStub) window._realDoAuthLogin(); };
+if(typeof doAuthLogin === 'undefined') window.doAuthLogin = window._doAuthLoginStub;
 function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
 
 // Overlay openers
 function openVoterLookup(){ _show('voter-lookup-overlay'); setTimeout(function(){var e=_el('vlookup-last');if(e)e.focus();},100); }
 function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
-function showAdminLoginFromFront(){ var s=_el('auth-login-subtitle'); if(s)s.textContent='Sign in to admin or campaign account'; _el('auth-email').value=''; _el('auth-password').value=''; _el('auth-login-err').style.display='none'; _show('auth-login-overlay'); setTimeout(function(){_el('auth-email').focus();},100); }
-function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-overlay'); }
-function showAuthRegister(){ _hide('auth-login-overlay'); _show('auth-register-overlay'); }
+function showAdminLoginFromFront(){ openCandidatePanel(); }
+function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-overlay'); _hide('cand-login-overlay'); }
+function showAuthRegister(){ openCandidatePanel(); } // Route to candidate panel
 function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
 function closeAdminDash(){ _hide('admin-dash-overlay'); }
 function closeCandidateDash(){ _hide('cand-dash-overlay'); }
@@ -7514,7 +7515,7 @@ function openCandidatePanel(){
     openCandidateDash();
     return;
   }
-  // Force close ALL other overlays
+  // Force close ALL other overlays including auth system
   ['auth-login-overlay','auth-register-overlay','voter-lookup-overlay'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.style.display='none';
@@ -8100,7 +8101,10 @@ function exportCandidateCSV(){
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
 window._realMaybeCollectVolInfo = maybeCollectVolInfo;
-window._realDoAuthLogin = doAuthLogin;
+// Wire real doAuthLogin - only if it's a different function than the stub
+if(typeof doAuthLogin === 'function' && doAuthLogin !== window._doAuthLoginStub){
+  window._realDoAuthLogin = doAuthLogin;
+}
 window._realVlookupOpenProfile = vlookupOpenProfile;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 
