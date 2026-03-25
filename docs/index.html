@@ -1442,7 +1442,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,400px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
     <div style="font-size:20px;margin-bottom:8px;">✉️ Count as Contacted?</div>
     <div style="font-size:14px;color:var(--text);margin-bottom:8px;font-weight:600;">Do you want to count these labels as contacted?</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:24px;">This removes them from future mail lists so you don't contact the same households twice.</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:24px;">Marking them contacted removes them from future mail pulls so the same households aren't contacted twice.</div>
     <div style="display:flex;gap:10px;">
       <button onclick="mailContactedConfirm(false)" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Skip</button>
       <button onclick="mailContactedConfirm(true)" style="flex:2;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;border-radius:9px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">✅ Yes, Count as Contacted</button>
@@ -5770,6 +5770,18 @@ async function runMailCanvass(){
   // Pre-populate donor org chips now that voters are loaded
   _populateDonorOrgChips();
 
+  // Re-apply latest contact state from localStorage (catches contacts from other sessions)
+  if(volunteerCampaignId){
+    const latestState = loadContactState(volunteerCampaignId);
+    if(Object.keys(latestState).length){
+      base.forEach(v=>{ const s=latestState[v.id]; if(s) v.contactStatus = s.contactStatus||'pending'; });
+      const before2 = base.length;
+      base = base.filter(v => v.contactStatus !== 'contacted');
+      const removed2 = before2 - base.length;
+      if(removed2 > 0) toast(`${removed2} already-contacted households excluded`);
+    }
+  }
+
   let filtered = applyMailFiltersToVoters(base);
   if(!filtered.length){ toast('No voters match those filters — try broadening your criteria.',true); return; }
   filtered.forEach(v=>{ v.assignment='mail'; });
@@ -5959,14 +5971,15 @@ function mqConfirm(){
   voters   = sliced;
   mailList = sliced;
   showMailLabelsOverlay(sliced);
+  // For candidate campaigns: ask if they want to mark as contacted right when labels appear
+  if(volunteerCampaignId){
+    setTimeout(()=>{ document.getElementById('mail-contacted-overlay').style.display='flex'; }, 400);
+  }
 }
 
 function doneMailLabels(){
   document.getElementById('mail-labels-overlay').classList.remove('open');
   document.getElementById('mlo-history-panel').style.display='none';
-  if(volunteerCampaignId && mailList && mailList.length > 0){
-    document.getElementById('mail-contacted-overlay').style.display='flex';
-  }
 }
 
 function closeMailLabels(){
@@ -5996,7 +6009,7 @@ function mailContactedConfirm(didMail){
         count++;
       }
     }
-    saveContactState(volunteerCampaignId, state);
+    saveContactStateRaw(volunteerCampaignId, state);
     if(count > 0) toast(`✉️ ${count} households marked as contacted`);
   }
 }
@@ -7210,6 +7223,21 @@ function saveContactState(){
   if(!_pendingContactPush){
     _pendingContactPush = true;
     setTimeout(()=>{ _pushContactsToAPI(camId); _pendingContactPush=false; }, 1500);
+  }
+}
+
+// Save a raw contact state object and sync to API
+async function saveContactStateRaw(camId, state){
+  if(!camId) return;
+  try{ localStorage.setItem(CONTACT_STORE_PREFIX+camId, JSON.stringify(state)); }catch(e){}
+  const updates = Object.entries(state).map(([id,s])=>({...s, id, updatedBy:_adminEmail||'volunteer'}));
+  if(!updates.length) return;
+  try{
+    await apiPost('/api/contacts/'+encodeURIComponent(camId), updates);
+    _setSyncBadge('ok','Synced');
+  } catch(e){
+    console.warn('Contact push fail:', e);
+    _setSyncBadge('err','Sync failed');
   }
 }
 
