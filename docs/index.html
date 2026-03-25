@@ -1422,7 +1422,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div class="mlo-sub" id="mlo-sub">0 voters</div>
     </div>
     <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap;">🖨 Print Labels</button>
-    <button onclick="document.getElementById('mail-labels-overlay').classList.remove('open');document.getElementById('mlo-history-panel').style.display='none';" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✕ Close</button>
+    <button onclick="doneMailLabels()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✓ Done</button>
   </div>
   <div style="display:flex;flex:1;overflow:hidden;">
     <div class="mlo-body" id="mlo-body" style="flex:1;"></div>
@@ -1441,7 +1441,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 <div id="mail-contacted-overlay" style="display:none;position:fixed;inset:0;z-index:9200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,400px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
     <div style="font-size:20px;margin-bottom:8px;">✉️ Count as Contacted?</div>
-    <div style="font-size:14px;color:var(--text);margin-bottom:8px;font-weight:600;">Want to count your previous labels as contacted?</div>
+    <div style="font-size:14px;color:var(--text);margin-bottom:8px;font-weight:600;">Do you want to count these labels as contacted?</div>
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:24px;">This removes them from future mail lists so you don't contact the same households twice.</div>
     <div style="display:flex;gap:10px;">
       <button onclick="mailContactedConfirm(false)" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Skip</button>
@@ -5958,15 +5958,14 @@ function mqConfirm(){
 
   voters   = sliced;
   mailList = sliced;
-  // For candidate campaigns: ask about previous mailing before showing new labels
-  // Only ask if there was a previous batch (mailList already populated)
+  showMailLabelsOverlay(sliced);
+}
+
+function doneMailLabels(){
+  document.getElementById('mail-labels-overlay').classList.remove('open');
+  document.getElementById('mlo-history-panel').style.display='none';
   if(volunteerCampaignId && mailList && mailList.length > 0){
-    window._mqPendingSliced = sliced;
     document.getElementById('mail-contacted-overlay').style.display='flex';
-  } else {
-    voters   = sliced;
-    mailList = sliced;
-    showMailLabelsOverlay(sliced);
   }
 }
 
@@ -5981,9 +5980,6 @@ function closeMailLabels(){
 
 function mailContactedConfirm(didMail){
   document.getElementById('mail-contacted-overlay').style.display='none';
-  const sliced = window._mqPendingSliced || mailList;
-  window._mqPendingSliced = null;
-  // Mark previous batch as contacted if they said yes
   if(didMail && volunteerCampaignId && mailList && mailList.length > 0){
     const state = loadContactState(volunteerCampaignId);
     let count = 0;
@@ -6003,10 +5999,6 @@ function mailContactedConfirm(didMail){
     saveContactState(volunteerCampaignId, state);
     if(count > 0) toast(`✉️ ${count} households marked as contacted`);
   }
-  // Now show the new labels
-  voters   = sliced;
-  mailList = sliced;
-  showMailLabelsOverlay(sliced);
 }
 
 function pickMode(mode){
@@ -6953,13 +6945,13 @@ function _launchVolCampaign(cam, mode){
 function applyVolunteerFocusToWizard(cam){
   const fa = cam.focusAreas || {};
 
-  // ── Auto-set canvassFor race from campaign district — skip step-race entirely ──
+  // ── Auto-set canvassFor race from campaign district — lock step-race ──
   if(fa.district && fa.district !== 'all'){
     const distMap = {
       HD73:  { field:'stHouse',  value:'73',  label:'Ohio House 73',    display:'HD-73',  race:'Ohio House District 73' },
       HD69:  { field:'stHouse',  value:'69',  label:'Ohio House 69',    display:'HD-69',  race:'Ohio House District 69' },
       SD20:  { field:'stSenate', value:'20',  label:'Ohio Senate 20',   display:'SD-20',  race:'Ohio State Senate District 20' },
-      CD12:  { field:'congDist', value:'12',      label:'US House Dist 12', display:'CD-12',  race:'U.S. House — District 12' }
+      CD12:  { field:'congDist', value:'12',  label:'US House Dist 12', display:'CD-12',  race:'U.S. House — District 12' }
     };
     const d = distMap[fa.district];
     if(d){
@@ -6967,13 +6959,52 @@ function applyVolunteerFocusToWizard(cam){
       canvassFor     = d.race || d.label;
       filterField    = d.field;
       filterDistrict = d.value;
+      // Lock race step — auto-select the matching race button and disable others
+      setTimeout(()=>{
+        const raceBtn = [...document.querySelectorAll('.race-btn')].find(b =>
+          b.dataset.field === d.field && b.dataset.district === d.value
+        );
+        if(raceBtn){
+          document.querySelectorAll('.race-btn').forEach(b => {
+            if(b !== raceBtn){
+              b.disabled = true;
+              b.style.opacity = '0.3';
+              b.style.cursor = 'not-allowed';
+              b.title = 'Race locked by campaign';
+            }
+          });
+          if(!raceBtn.classList.contains('selected')) raceBtn.click();
+        }
+        const changeRace = document.getElementById('change-race');
+        if(changeRace) changeRace.style.display = 'none';
+      }, 150);
     }
+  } else if(fa.race && fa.race !== 'all'){
+    // Non-district race locked (e.g. County Commissioner, local office)
+    setTimeout(()=>{
+      const raceBtn = [...document.querySelectorAll('.race-btn')].find(b =>
+        (b.dataset.race||'').toLowerCase().includes(fa.race.toLowerCase())
+      );
+      if(raceBtn){
+        document.querySelectorAll('.race-btn').forEach(b => {
+          if(b !== raceBtn){
+            b.disabled = true;
+            b.style.opacity = '0.3';
+            b.style.cursor = 'not-allowed';
+            b.title = 'Race locked by campaign';
+          }
+        });
+        if(!raceBtn.classList.contains('selected')) raceBtn.click();
+      }
+      const changeRace = document.getElementById('change-race');
+      if(changeRace) changeRace.style.display = 'none';
+    }, 150);
   } else {
-    // No specific district — volunteer must pick a race, clear any stale auto-race
+    // No specific district — volunteer must pick a race
     window._volAutoRace = null;
   }
 
-  // ── Auto-select city/precinct ──
+  // ── Auto-select city/precinct and lock area if candidate specified one ──
   if(fa.city && fa.city !== 'all'){
     setTimeout(()=>{
       const areaBtn = [...document.querySelectorAll('.area-btn')].find(b =>
@@ -6982,10 +7013,21 @@ function applyVolunteerFocusToWizard(cam){
       );
       if(areaBtn){
         selectArea(areaBtn);
-        // If candidate locked a specific precinct, store it — buildNeighborhoodStep will auto-click it
         if(fa.precinct) window._volAutoPrecinct = fa.precinct;
       }
-    }, 200);
+      // Lock all area buttons — volunteer cannot change area
+      document.querySelectorAll('#body-area .area-btn').forEach(b => {
+        if(!b.classList.contains('selected')){
+          b.disabled = true;
+          b.style.opacity = '0.35';
+          b.style.cursor = 'not-allowed';
+          b.title = 'Area locked by campaign';
+        }
+      });
+      // Hide the "Change" link for area step
+      const changeArea = document.getElementById('change-area');
+      if(changeArea) changeArea.style.display = 'none';
+    }, 300);
   } else {
     // No city — volunteer picks area themselves; race auto-collapses via _volRaceAutoCollapse
     if(canvassFor) window._volRaceAutoCollapse = true;
@@ -8622,6 +8664,20 @@ if('serviceWorker' in navigator){
           <button class="dash-chip" data-focus-type="district" data-focus-val="SD20" onclick="toggleFocusArea(this)">SD-20 (Senate)</button>
           <button class="dash-chip" data-focus-type="district" data-focus-val="CD12" onclick="toggleFocusArea(this)">CD-12 (Congress)</button>
           <button class="dash-chip" data-focus-type="district" data-focus-val="all" onclick="toggleFocusArea(this)">All Districts</button>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">Local / County Race (locks volunteers to this race)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <!-- Local/county race lock -->
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Commissioner" onclick="toggleFocusArea(this)">Commissioner</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Prosecutor" onclick="toggleFocusArea(this)">Prosecutor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Auditor" onclick="toggleFocusArea(this)">Auditor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Treasurer" onclick="toggleFocusArea(this)">County Treasurer</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Sheriff" onclick="toggleFocusArea(this)">Sheriff</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Common Pleas Judge" onclick="toggleFocusArea(this)">Common Pleas Judge</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="City Council" onclick="toggleFocusArea(this)">City Council</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Mayor" onclick="toggleFocusArea(this)">Mayor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="School Board" onclick="toggleFocusArea(this)">School Board</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Township Trustee" onclick="toggleFocusArea(this)">Township Trustee</button>
         </div>
       </div>
 
