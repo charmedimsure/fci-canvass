@@ -7322,8 +7322,15 @@ async function adminLogin(){
   }
   adminSession=true;
   document.getElementById('cand-login-overlay').style.display='none';
-  openAdminDash();
-  updateQrFab();
+  try {
+    openAdminDash();
+  } catch(e) {
+    console.error('openAdminDash error:', e);
+    // Fallback: force open the overlay directly
+    const ol = document.getElementById('admin-dash-overlay');
+    if(ol) ol.style.display='flex';
+  }
+  try { updateQrFab(); } catch(e) {}
 }
 
 function adminLogout(){ _clearSession();
@@ -7339,14 +7346,18 @@ function closeAdminDash(){
 
 function openAdminDash(){
   const ol = document.getElementById('admin-dash-overlay');
+  if(!ol){ console.error('admin-dash-overlay not found'); return; }
   ol.style.display='flex';
-  renderAdminCampaignList();
-  renderAdminAccounts();
+  try { renderAdminCampaignList(); } catch(e){ console.error('renderAdminCampaignList:', e); }
+  try { renderAdminAccounts(); } catch(e){ console.error('renderAdminAccounts:', e); }
   const npe = document.getElementById('admin-new-email');
   if(npe) npe.value='';
-  document.getElementById('admin-new-pw').value='';
-  document.getElementById('admin-new-pw2').value='';
-  document.getElementById('admin-pw-err').style.display='none';
+  const pw1 = document.getElementById('admin-new-pw');
+  const pw2 = document.getElementById('admin-new-pw2');
+  const pwerr = document.getElementById('admin-pw-err');
+  if(pw1) pw1.value='';
+  if(pw2) pw2.value='';
+  if(pwerr) pwerr.style.display='none';
 }
 
 async function renderAdminCampaignList(){
