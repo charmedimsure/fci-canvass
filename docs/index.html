@@ -7312,8 +7312,8 @@ async function adminLogin(){
   if(!pw){ err.textContent='Enter your password'; err.style.display=''; return; }
   const h = await hashPin(pw);
   if(admins.length===0){
-    // No admins set up yet — accept legacy 'admin' password and prompt to add first admin
-    if(h !== LEGACY_HASH){ err.textContent='Incorrect password'; err.style.display=''; return; }
+    // No admins set up yet — accept legacy 'admin' password, email not required
+    if(h !== LEGACY_HASH){ err.textContent='Incorrect password — use "admin" for first login'; err.style.display=''; return; }
   } else {
     if(!email){ err.textContent='Enter your email address'; err.style.display=''; return; }
     const match = admins.find(a=>a.email===email && a.hash===h);
@@ -7588,10 +7588,20 @@ async function candidateSetup(){
 
   const collectVol = document.getElementById('cand-setup-collect-vol')?.checked || false;
   cams[id] = { id, name, seat, email, pinHash, pinHint: pin.slice(0,2)+'****', focusAreas:{}, message:'', collectVolunteerInfo: collectVol };
-  saveCampaigns(cams);
+  try {
+    saveCampaigns(cams);
+  } catch(e) {
+    console.warn('Campaign save error:', e);
+  }
   candidateSession = cams[id];
   document.getElementById('cand-login-overlay').style.display='none';
-  afterCandidateLogin();
+  try {
+    afterCandidateLogin();
+  } catch(e) {
+    console.error('afterCandidateLogin error:', e);
+    toast('Account created but there was an error loading the session — please refresh', true);
+    return;
+  }
   toast(`Campaign "${name}" created ✓`);
 }
 
@@ -8351,8 +8361,8 @@ if('serviceWorker' in navigator){
 <!-- ═══════════════════════════════════════════════════════════════
      CANDIDATE LOGIN OVERLAY
 ═══════════════════════════════════════════════════════════════ -->
-<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:7500;background:var(--overlay-bg);align-items:center;justify-content:center;padding:20px;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:32px 28px;box-shadow:0 20px 60px var(--shadow);max-height:90vh;overflow-y:auto;">
+<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:7500;background:var(--overlay-bg);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:32px 28px;box-shadow:0 20px 60px var(--shadow);margin:auto;">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:30px;margin-bottom:6px;">🗳️</div>
       <div style="font-size:18px;font-weight:700;color:var(--text);" id="cand-modal-title">Candidate Login</div>
@@ -8456,7 +8466,7 @@ if('serviceWorker' in navigator){
       <div style="margin-bottom:18px;">
         <label class="cand-label">Password</label>
         <input id="cand-admin-pw" type="password" placeholder="Admin password" class="cand-input pin-input" />
-        <div id="cand-admin-err" style="display:none;font-size:11px;color:var(--danger);margin-top:6px;"></div>>
+        <div id="cand-admin-err" style="display:none;font-size:11px;color:var(--danger);margin-top:6px;"></div>
       </div>
       <div style="display:flex;gap:10px;">
         <button onclick="showLoginForm()" class="cand-btn-cancel">← Back</button>
