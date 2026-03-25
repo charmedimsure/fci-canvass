@@ -5894,7 +5894,9 @@ function mqUpdateSheets(){
   const val = parseInt(document.getElementById('mq-custom').value);
   const el = document.getElementById('mq-sheet-hint');
   if(val && val > 0){
-    const sheets = Math.ceil(val / 30);
+    // In household mode the number IS the label count; in individual mode it's per voter
+    const labelCount = _mqMailMode === 'household' ? val : val;
+    const sheets = Math.ceil(labelCount / 30);
     el.textContent = '= ' + sheets + ' sheet' + (sheets===1?'':'s');
   } else {
     el.textContent = '';
@@ -5922,26 +5924,34 @@ function mqConfirm(){
     ? scoreFiltered  // candidate mode: keep sorted order (donors first etc.)
     : [...scoreFiltered].sort(() => Math.random() - 0.5);  // independent: shuffle
 
-  // Slice to requested count (by individuals, not households)
+  // Slice to requested count
   let sliced;
-  if(isAll || num >= totalIndiv){
-    sliced = toSlice;
+  if(_mqMailMode === 'household'){
+    // Household mode: num = number of households
+    if(isAll || num >= toSlice.length){
+      sliced = toSlice;
+    } else {
+      sliced = toSlice.slice(0, num);
+    }
   } else {
-    // Build sliced list: take households until we hit num individuals
-    sliced = [];
-    let count = 0;
-    for(const v of toSlice){
-      const indiv = v.voters && v.voters.length ? v.voters.length : 1;
-      if(count + indiv <= num){
-        sliced.push(v);
-        count += indiv;
-      } else {
-        // Partial household — take only as many voters as needed
-        const needed = num - count;
-        if(needed > 0 && v.voters && v.voters.length){
-          sliced.push({...v, voters: v.voters.slice(0, needed), hhCount: needed});
+    // Individual mode: num = number of individual voters
+    if(isAll || num >= totalIndiv){
+      sliced = toSlice;
+    } else {
+      sliced = [];
+      let count = 0;
+      for(const v of toSlice){
+        const indiv = v.voters && v.voters.length ? v.voters.length : 1;
+        if(count + indiv <= num){
+          sliced.push(v);
+          count += indiv;
+        } else {
+          const needed = num - count;
+          if(needed > 0 && v.voters && v.voters.length){
+            sliced.push({...v, voters: v.voters.slice(0, needed), hhCount: needed});
+          }
+          break;
         }
-        break;
       }
     }
   }
