@@ -7514,9 +7514,11 @@ function openCandidatePanel(){
     openCandidateDash();
     return;
   }
-  // Hide auth overlay if open
-  const authOl = document.getElementById('auth-login-overlay');
-  if(authOl) authOl.style.display='none';
+  // Force close ALL other overlays
+  ['auth-login-overlay','auth-register-overlay','voter-lookup-overlay'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.style.display='none';
+  });
   const ol = document.getElementById('cand-login-overlay');
   ol.style.display='flex';
   showLoginForm();
@@ -8375,7 +8377,7 @@ if('serviceWorker' in navigator){
 <!-- ═══════════════════════════════════════════════════════════════
      CANDIDATE LOGIN OVERLAY
 ═══════════════════════════════════════════════════════════════ -->
-<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:10500;background:var(--overlay-bg);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
+<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:var(--overlay-bg);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:32px 28px;box-shadow:0 20px 60px var(--shadow);margin:auto;">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:30px;margin-bottom:6px;">🗳️</div>
