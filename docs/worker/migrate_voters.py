@@ -45,6 +45,7 @@ def upload_voters(voters, worker_url, api_key, admin_key, batch_size=500):
         'Content-Type':  'application/json',
         'X-FCI-Key':     api_key,
         'X-FCI-Admin':   admin_key,
+        'User-Agent':    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     }
 
     total   = len(voters)
