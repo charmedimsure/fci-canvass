@@ -2400,11 +2400,14 @@ async function selectArea(btn){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
+      // Door-to-door always scoped to Fairfield County regardless of race selected
+      fetchParams.county_num = '23';
       if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
-      // else: no area filter — fetch all voters (worker filters by party != R)
+      else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
+      else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;

@@ -370,7 +370,7 @@ def upload_voters(voters, worker_url, api_key, admin_key, batch_size=200):
 
 
 # ── Census Geocoder ──────────────────────────────────────────────────────────
-def geocode_census_batch(records, batch_size=2000):
+def geocode_census_batch(records, batch_size=1000):
     """
     Geocode a list of {'id', 'address', 'city', 'state', 'zip'} dicts
     using the Census Geocoder batch API.
@@ -410,25 +410,31 @@ def geocode_census_batch(records, batch_size=2000):
         req = urllib.request.Request(url, data=body, method='POST')
         req.add_header('Content-Type', f'multipart/form-data; boundary={boundary}')
 
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                text = resp.read().decode('utf-8', errors='replace')
-            reader = _csv.reader(io.StringIO(text))
-            for row in reader:
-                if len(row) >= 6 and row[2].strip().upper() == 'MATCH':
-                    vid = row[0].strip()
-                    coords = row[5].strip()  # "lon,lat"
-                    if coords:
-                        parts = coords.split(',')
-                        if len(parts) == 2:
-                            try:
-                                lon, lat = float(parts[0]), float(parts[1])
-                                results[vid] = (lat, lon)
-                            except ValueError:
-                                pass
-        except Exception as e:
-            print(f"  WARNING: Geocoding batch {batch_num} failed: {e} — skipping, continuing...")
-            time.sleep(2)  # brief pause before next batch
+        success = False
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    text = resp.read().decode('utf-8', errors='replace')
+                reader = _csv.reader(io.StringIO(text))
+                for row in reader:
+                    if len(row) >= 6 and row[2].strip().upper() == 'MATCH':
+                        vid = row[0].strip()
+                        coords = row[5].strip()  # "lon,lat"
+                        if coords:
+                            parts = coords.split(',')
+                            if len(parts) == 2:
+                                try:
+                                    lon, lat = float(parts[0]), float(parts[1])
+                                    results[vid] = (lat, lon)
+                                except ValueError:
+                                    pass
+                success = True
+                break
+            except Exception as e:
+                print(f"  WARNING: Geocoding batch {batch_num} attempt {attempt+1} failed: {e}")
+                time.sleep(5)
+        if not success:
+            print(f"  SKIPPING batch {batch_num} after 3 attempts")
 
     matched = len(results)
     print(f"  Geocoded {matched:,}/{total:,} addresses ({matched/total*100:.0f}%)")
