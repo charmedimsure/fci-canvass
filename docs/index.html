@@ -6018,6 +6018,11 @@ function mailContactedConfirm(didMail){
 }
 
 function pickMode(mode){
+  // Restore all hidden area buttons (will be re-filtered by applyVolunteerFocusToWizard if needed)
+  document.querySelectorAll('#body-area .area-btn, #body-area .area-group, #body-area .area-group-label').forEach(el => {
+    el.style.display = '';
+    if(el.classList.contains('area-btn')){ el.disabled = false; el.style.opacity = ''; el.style.cursor = ''; }
+  });
   // Clear stale voter data and downstream state when switching modes
   ALL_VOTERS_RAW = [];
   _currentAreaVoters = null;
@@ -6975,6 +6980,21 @@ function applyVolunteerFocusToWizard(cam){
       canvassFor     = d.race || d.label;
       filterField    = d.field;
       filterDistrict = d.value;
+
+      // District → allowed area labels (data-area-label values)
+      const _districtAreas = {
+        // HD-69: southern/rural Fairfield County — from actual voter file data
+        'HD69': ['Lancaster','Canal Winchester','Carroll','Lithopolis','Amanda','Bremen','Stoutsville','Sugar Grove',
+                 'Hocking Twp','Berne Twp','Bloom Twp','Clearcreek Twp','Rushcreek Twp','Madison Twp','Amanda Twp','Richland Twp'],
+        // HD-73: northern/eastern Fairfield County — Pickerington, Violet, Lancaster city core, etc.
+        'HD73': ['Lancaster','Pickerington','Baltimore','Millersport','Pleasantville',
+                 'Violet Twp','Montgomery Twp','Walnut Twp','Greenfield Twp','Pleasant Twp',
+                 'Liberty Twp','Reynoldsburg','Columbus (Fairfield Co.)'],
+        'SD20': null,  // whole county
+        'CD12': null,  // whole county
+      };
+      const allowedAreas = _districtAreas[fa.district] || null;
+
       // Lock race step — auto-select the matching race button and disable others
       setTimeout(()=>{
         const raceBtn = [...document.querySelectorAll('.race-btn')].find(b =>
@@ -6993,6 +7013,24 @@ function applyVolunteerFocusToWizard(cam){
         }
         const changeRace = document.getElementById('change-race');
         if(changeRace) changeRace.style.display = 'none';
+
+        // Filter area buttons by district
+        if(allowedAreas){
+          document.querySelectorAll('#body-area .area-btn').forEach(b => {
+            const lbl = (b.dataset.areaLabel || b.textContent || '').trim();
+            if(!allowedAreas.includes(lbl)){
+              b.style.display = 'none';
+            }
+          });
+          // Hide empty section labels
+          document.querySelectorAll('#body-area .area-group').forEach(grp => {
+            const anyVisible = [...grp.querySelectorAll('.area-btn')].some(b => b.style.display !== 'none');
+            const label = grp.previousElementSibling;
+            grp.style.display = anyVisible ? '' : 'none';
+            if(label && label.classList.contains('area-group-label'))
+              label.style.display = anyVisible ? '' : 'none';
+          });
+        }
       }, 150);
     }
   } else if(fa.race && fa.race !== 'all'){
@@ -7031,13 +7069,23 @@ function applyVolunteerFocusToWizard(cam){
         selectArea(areaBtn);
         if(fa.precinct) window._volAutoPrecinct = fa.precinct;
       }
-      // Lock all area buttons — volunteer cannot change area
+      // Hide irrelevant area buttons — only show areas matching the campaign city
       document.querySelectorAll('#body-area .area-btn').forEach(b => {
-        if(!b.classList.contains('selected')){
-          b.disabled = true;
-          b.style.opacity = '0.35';
-          b.style.cursor = 'not-allowed';
-          b.title = 'Area locked by campaign';
+        const btnLabel = (b.dataset.areaLabel || b.textContent || '').toLowerCase();
+        const btnValue = (b.dataset.areaValue || '').toLowerCase();
+        const cityLower = fa.city.toLowerCase();
+        const matches = btnLabel.includes(cityLower) || btnValue.includes(cityLower);
+        if(!matches){
+          b.style.display = 'none';
+        }
+      });
+      // Also hide section labels that have no visible buttons
+      document.querySelectorAll('#body-area .area-group').forEach(grp => {
+        const anyVisible = [...grp.querySelectorAll('.area-btn')].some(b => b.style.display !== 'none');
+        const label = grp.previousElementSibling;
+        if(!anyVisible){
+          grp.style.display = 'none';
+          if(label && label.classList.contains('area-group-label')) label.style.display = 'none';
         }
       });
       // Hide the "Change" link for area step
