@@ -5675,10 +5675,18 @@ function applyMailFiltersToVoters(vlist){
       const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
       if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
     }
-    // Ward filter — only apply if voters actually have ward data
+    // Ward filter — exclude voters not in the selected ward
+    // Also exclude voters with no ward data (e.g. village voters pulled by mailing city match)
     if(!mailSortDonors && mailFilterWards.length){
-      const hasWardData = result.some(v2 => (v2.ward||'').trim().length > 0);
-      if(hasWardData && !mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
+      const voterWard = (v.ward||'').toUpperCase().trim();
+      // If voter has no ward, check if they're actually in a Lancaster City precinct
+      // If not, they're a non-city voter with Lancaster mailing address — exclude them
+      if(!voterWard){
+        const prec = (v.precinctName||'').toUpperCase();
+        if(!prec.startsWith('LANCASTER CITY')) return false;
+      } else if(!mailFilterWards.includes(voterWard)){
+        return false;
+      }
     }
     // Central committee precinct filter
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
