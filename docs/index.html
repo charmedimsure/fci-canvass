@@ -2127,6 +2127,10 @@ const FIELD_LOOKUP={"cong":{"0":"12TH CONGRESSIONAL"},"sen":{"0":"OHIO STATE SEN
 let ALL_VOTERS_RAW = [];   // populated by loadVotersFromAPI()
 
 function voterFromAPI(v){
+  // Immediately exclude R donors and registered Republicans at the source
+  // so they can never appear anywhere in the app
+  if((v.party||v.pty||'').toUpperCase() === 'R') return null;
+  if(v.donations && v.donations.some(d => d.lean === 'R')) return null;
   // v comes from D1 — decode compressed field names to what the app expects
   // vns is stored as JSON string array of [firstName, lastName] pairs
   let vnsArr = [];
@@ -2217,7 +2221,7 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -2419,7 +2423,7 @@ async function selectArea(btn){
       else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
       else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -4321,7 +4325,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -5772,7 +5776,7 @@ async function runMailCanvass(){
         // Filter by district at DB level — fields now populated
       }
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -6527,7 +6531,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -7997,7 +8001,7 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -8011,7 +8015,7 @@ async function buildPrecintChips(cityVal){
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
