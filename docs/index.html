@@ -268,7 +268,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   }
   html, body { height: 100%; font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: background .25s, color .25s; }
 
-  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:7000; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:7000; width:100%; box-sizing:border-box; }
 .scroll-under-header { padding-top: 100px !important; }
   .logo { display:flex; align-items:center; }
   .logo-dark  { display: none; }
@@ -6302,19 +6302,19 @@ function openMapsRoute(appChoice){
   if(useApple){
     // Apple Maps — supports up to 9 waypoints via daddr chaining
     if(addrs.length === 1){
-      window.open(`https://maps.apple.com/?q=${enc(addrs[0])}&dirflg=w`, '_blank');
+      window.open(`https://maps.apple.com/?q=${enc(addrs[0])}&dirflg=w`, '_blank', 'noopener,noreferrer');
     } else {
       const origin = enc(addrs[0]);
       const dest   = enc(addrs[addrs.length - 1]);
       // Apple Maps waypoints via comma-separated daddr (limited support — use coords)
       const url = `https://maps.apple.com/?saddr=${origin}&daddr=${dest}&dirflg=w`;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
     toast(`Opening ${cl.length} stops in Apple Maps 🍎`);
   } else {
     // Google Maps walking directions
     if(addrs.length === 1){
-      window.open(`https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`, '_blank');
+      window.open(`https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`, '_blank', 'noopener,noreferrer');
       return;
     }
     const origin = enc(addrs[0]);
@@ -6325,7 +6325,7 @@ function openMapsRoute(appChoice){
       + `&destination=${dest}`
       + (wpts ? `&waypoints=${wpts}` : '')
       + `&travelmode=walking`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
     toast(`Opening ${cl.length} stops in Google Maps 🗺`);
   }
 }
