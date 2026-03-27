@@ -1461,7 +1461,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 </div>
 
 <!-- MAIL QUANTITY PICKER OVERLAY -->
-<div id="mail-qty-overlay" style="display:none;position:fixed;inset:0;z-index:3600;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+<div id="mail-qty-overlay" style="display:none;position:fixed;inset:0;z-index:8600;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,420px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
     <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;">📬 How many postcards?</div>
     <div id="mq-sub" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;"></div>
@@ -2628,6 +2628,8 @@ function selectRace(btn){
   canvassFor      = btn.dataset.race;
   filterField     = btn.dataset.field    || '';
   filterDistrict  = btn.dataset.district || '';
+  // Clear cached voters so mail re-fetches with correct district filter
+  ALL_VOTERS_RAW = [];
   wizCollapse('step-race','chip-race', canvassFor, 'change-race-btn');
   wizShow('step-generate');
   updateCanvassForPill();
@@ -2759,10 +2761,10 @@ function applyFilters(voterList){
 
   // Race / district filter
   if(filterField && filterDistrict){
-    const want = norm(filterDistrict);
+    const want = (filterDistrict||'').trim();
     list = list.filter(v => {
-      const val = norm(v[filterField] || '');
-      return val && (val === want || val.includes(want) || want.includes(val));
+      const val = (v[filterField] || '').trim();
+      return val && val === want;
     });
   }
 
