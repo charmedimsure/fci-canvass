@@ -1327,6 +1327,16 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 
       <!-- GENERATE -->
       <div id="step-generate" style="display:none;">
+        <!-- Door-to-door score filter (hidden for mail mode) -->
+        <div id="door-score-filter" style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Include which voters?</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button class="door-score-btn selected" data-dscore="strong" onclick="toggleDoorScore(this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">★ Strong</button>
+            <button class="door-score-btn selected" data-dscore="leans" onclick="toggleDoorScore(this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">~ Leans</button>
+            <button class="door-score-btn" data-dscore="unknown" onclick="toggleDoorScore(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">? Unknown</button>
+          </div>
+          <div id="door-unknown-warning" style="display:none;font-size:11px;color:#f59e0b;margin-top:8px;padding:6px 10px;background:rgba(245,158,11,.1);border-radius:6px;border:1px solid rgba(245,158,11,.3);">⚠️ Including unknown voters may result in longer walks — they're spread across the full area.</div>
+        </div>
         <button id="generate-btn" onclick="canvassMode==='mail'?_openSimpleMailFilter():generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
           Generate Routes →
         </button>
@@ -2947,6 +2957,18 @@ function isRepPrimaryOnly(v){
   return false;
 }
 
+// Score an individual member within a household
+// presOnly = true means they only vote in presidential elections (lower engagement)
+function autoScoreIndividual(party, voting, lastPrimary, specialsVoted, donations, presOnly){
+  const baseScore = autoScore(party, voting, lastPrimary, specialsVoted, donations);
+  // Demote presOnly voters one level (strong→leans, leans→unknown)
+  if(presOnly){
+    if(baseScore === 'strong') return 'leans';
+    if(baseScore === 'leans')  return 'unknown';
+  }
+  return baseScore;
+}
+
 function autoScore(party, voting, lastPrimary, specialsVoted, donations){
   const isDem  = party === 'D';
   const isRep  = party === 'R';
@@ -3129,57 +3151,81 @@ function adaptiveThreshold(pts){
   return Math.max(0.05, Math.min(0.25, median*2));
 }
 
+// Door-to-door score filter state
+let _doorScores = new Set(['strong','leans']); // default: strong + leans
+
+function toggleDoorScore(btn){
+  const score = btn.dataset.dscore;
+  if(_doorScores.has(score)){
+    if(_doorScores.size === 1){ toast('Select at least one voter type', true); return; }
+    _doorScores.delete(score);
+    btn.style.background = 'var(--surface2)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--text)';
+    btn.classList.remove('selected');
+  } else {
+    _doorScores.add(score);
+    btn.style.background = 'var(--fci-sky)';
+    btn.style.borderColor = 'var(--fci-sky)';
+    btn.style.color = '#fff';
+    btn.classList.add('selected');
+  }
+  const warn = document.getElementById('door-unknown-warning');
+  if(warn) warn.style.display = _doorScores.has('unknown') ? '' : 'none';
+}
+
 function clusterVoters(vl){
-  // Exclude Republican donors, registered Republicans, and mail-only households (assisted living/dorms)
+  const ROUTE_TARGET = 20; // 20 households per route
+  // Exclude Republicans and mail-only
   const mailOnlyList = vl.filter(v => v.mailOnly);
   vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly);
-  const ROUTE_TARGET=15;
-  const valid=vl.filter(v=>v.lat&&v.lon);
-  const noCoord=vl.filter(v=>!v.lat||!v.lon);
 
-  if(!valid.length) return {walk:[],mail:[...noCoord],thresh:0.12};
-
-  const thresh=adaptiveThreshold(valid);
-
-  // Step 1: group by identical coords
-  const coordMap=new Map();
-  valid.forEach(v=>{
-    const key=`${v.lat.toFixed(6)},${v.lon.toFixed(6)}`;
-    if(!coordMap.has(key)) coordMap.set(key,[]);
-    coordMap.get(key).push(v);
+  // Apply door-to-door score filter — include household if ANY member matches
+  const scoreFiltered = vl.filter(v => {
+    // Check if any individual in the household matches the score filter
+    const members = v.voters && v.voters.length ? v.voters : [null];
+    return members.some(vn => {
+      const presOnly = Array.isArray(vn) ? (vn[3] || false) : (vn && vn.presOnly) || false;
+      const s = v.scoreOverride && v.score ? v.score
+        : autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+      if(_doorScores.has('strong') && s === 'strong') return true;
+      if(_doorScores.has('leans')  && s === 'leans')  return true;
+      if(_doorScores.has('unknown') && s !== 'strong' && s !== 'leans') return true;
+      return false;
+    });
   });
-  const groups=[...coordMap.values()];
 
-  // Step 2: BFS-merge groups within adaptive threshold
-  const assigned=new Set(), clusters=[];
-  for(let i=0;i<groups.length;i++){
-    if(assigned.has(i)) continue;
-    const grp=[i]; assigned.add(i); const q=[i];
-    while(q.length){
-      const ci=q.shift();
-      const cPt=groups[ci][0];
-      for(let j=0;j<groups.length;j++){
-        if(!assigned.has(j)){
-          const jPt=groups[j][0];
-          if(haversine(cPt.lat,cPt.lon,jPt.lat,jPt.lon)<=thresh){
-            grp.push(j); assigned.add(j); q.push(j);
-          }
-        }
+  const valid   = scoreFiltered.filter(v => v.lat && v.lon);
+  const noCoord = scoreFiltered.filter(v => !v.lat || !v.lon);
+  if(!valid.length) return {walk:[], mail:[...noCoord, ...mailOnlyList], thresh:0.12};
+
+  // Nearest-neighbor greedy clustering into routes of ROUTE_TARGET
+  // Build routes by repeatedly finding the closest unassigned voter
+  const unassigned = [...valid];
+  const walk = [];
+
+  while(unassigned.length > 0){
+    const route = [];
+    // Start from the northernmost unassigned voter
+    unassigned.sort((a,b) => b.lat - a.lat);
+    route.push(unassigned.shift());
+
+    while(route.length < ROUTE_TARGET && unassigned.length > 0){
+      // Find closest unassigned to last point in route
+      const last = route[route.length - 1];
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for(let i = 0; i < unassigned.length; i++){
+        const d = haversine(last.lat, last.lon, unassigned[i].lat, unassigned[i].lon);
+        if(d < bestDist){ bestDist = d; bestIdx = i; }
       }
+      route.push(unassigned.splice(bestIdx, 1)[0]);
     }
-    clusters.push(grp.flatMap(idx=>groups[idx]));
+    walk.push(route);
   }
 
-  // Step 3: split large clusters, truly isolated single-address → mail
-  const walk=[], mail=[...noCoord];
-  clusters.forEach(cl=>{
-    if(cl.length < 15){ cl.forEach(v=>mail.push(v)); return; }  // small clusters → mail
-    // Sort N→S, W→E for logical walking order
-    cl.sort((a,b)=> a.lat!==b.lat ? b.lat-a.lat : a.lon-b.lon);
-    for(let i=0;i<cl.length;i+=ROUTE_TARGET) walk.push(cl.slice(i,i+ROUTE_TARGET));
-  });
-
-  return {walk, mail, thresh};
+  const mail = [...noCoord, ...mailOnlyList];
+  return {walk, mail, thresh: 0.12};
 }
 
 function renderMap(){
@@ -5295,9 +5341,13 @@ function showLabelHistory(dataIdx){
           a = vn.age; po = vn.presOnly;
         }
         const isThis = fn===first && ln===last;
+        const memberScore = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, po);
+        const msColor = memberScore==='strong'?'var(--strong)':memberScore==='leans'?'var(--leans)':'var(--text-muted)';
+        const msLabel = memberScore==='strong'?'★':memberScore==='leans'?'~':'?';
         return `<div style="padding:5px 0;border-bottom:1px solid var(--border);${isThis?'background:var(--accent-bg);border-radius:4px;padding:5px 6px;':''}">
           <span style="font-weight:${isThis?700:400};font-size:12px;color:var(--text);">${fn} ${ln}</span>
           ${a ? `<span style="font-size:11px;color:var(--text-muted);margin-left:4px;">age ${a}</span>` : ''}
+          <span style="font-size:11px;color:${msColor};margin-left:6px;font-weight:700;">${msLabel}</span>
           ${po ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;" title="Votes in presidential elections only">🗳 pres only</span>` : ''}
         </div>`;
       }).join('')
@@ -6018,6 +6068,20 @@ function mailContactedConfirm(didMail){
 }
 
 function pickMode(mode){
+  // Show/hide door score filter
+  const dsf = document.getElementById('door-score-filter');
+  if(dsf) dsf.style.display = mode === 'door' ? '' : 'none';
+  // Reset door scores to default
+  _doorScores = new Set(['strong','leans']);
+  document.querySelectorAll('.door-score-btn').forEach(b => {
+    const sel = _doorScores.has(b.dataset.dscore);
+    b.style.background = sel ? 'var(--fci-sky)' : 'var(--surface2)';
+    b.style.borderColor = sel ? 'var(--fci-sky)' : 'var(--border)';
+    b.style.color = sel ? '#fff' : 'var(--text)';
+    b.classList.toggle('selected', sel);
+  });
+  const warn = document.getElementById('door-unknown-warning');
+  if(warn) warn.style.display = 'none';
   // Restore all hidden area buttons (will be re-filtered by applyVolunteerFocusToWizard if needed)
   document.querySelectorAll('#body-area .area-btn, #body-area .area-group, #body-area .area-group-label').forEach(el => {
     el.style.display = '';
