@@ -1,5 +1,5 @@
 // FCI Canvass — Service Worker v4
-const CACHE = 'fci-canvass-20260327155555'; // auto-bumped on deploy
+const CACHE = 'fci-canvass-20260330185830'; // auto-bumped on deploy
 
 const APP_SHELL = [
   './',
@@ -40,15 +40,8 @@ self.addEventListener('fetch', event => {
       url.hostname.includes('unpkg') ||
       url.hostname.includes('workers.dev') ||
       url.hostname.includes('cloudflare') ||
-      url.hostname.includes('github') ||
       url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(event.request, { mode: 'cors', credentials: 'omit' })
-        .catch(err => new Response(JSON.stringify({ error: err.message }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        }))
-    );
+    event.respondWith(fetch(event.request));
     return;
   }
 

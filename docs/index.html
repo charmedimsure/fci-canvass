@@ -3183,8 +3183,10 @@ function toggleDoorScore(btn){
 function clusterVoters(vl){
   const ROUTE_TARGET = 20; // 20 households per route
   // Exclude Republicans and mail-only
-  const mailOnlyList = vl.filter(v => v.mailOnly);
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly);
+  // Also treat LOT address voters as mail-only (trailer park residents)
+  const isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
+  const mailOnlyList = vl.filter(v => v.mailOnly || isLotAddr(v));
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly && !isLotAddr(v));
 
   // Apply door-to-door score filter — include household if ANY member matches
   const scoreFiltered = vl.filter(v => {
@@ -6591,8 +6593,9 @@ async function generateRoutes(){
 
   await geocodeAll(voters);
   // Separate mail-only households (assisted living/dorms) before clustering
-  const _mailOnlyVoters = voters.filter(v => v.mailOnly);
-  const _doorVoters = voters.filter(v => !v.mailOnly);
+  const _isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
+  const _mailOnlyVoters = voters.filter(v => v.mailOnly || _isLotAddr(v));
+  const _doorVoters = voters.filter(v => !v.mailOnly && !_isLotAddr(v));
   const res=clusterVoters(_doorVoters);
   walkClusters=res.walk;
   // Combine clustered mail list with mail-only households
@@ -7035,6 +7038,31 @@ function _launchVolCampaign(cam, mode){
 
 function applyVolunteerFocusToWizard(cam){
   const fa = cam.focusAreas || {};
+
+  // ── Lock door-to-door score filter based on candidate score focus ──
+  if(fa.score && fa.score !== 'all'){
+    // Set _doorScores based on candidate preference
+    if(fa.score === 'strong'){
+      _doorScores = new Set(['strong']);
+    } else if(fa.score === 'leans'){
+      _doorScores = new Set(['strong','leans']);
+    }
+    // Update the UI chips and disable others
+    setTimeout(()=>{
+      document.querySelectorAll('.door-score-btn').forEach(b => {
+        const val = b.dataset.dscore;
+        const allowed = _doorScores.has(val);
+        b.style.background  = allowed ? 'var(--fci-sky)' : 'var(--surface2)';
+        b.style.borderColor = allowed ? 'var(--fci-sky)' : 'var(--border)';
+        b.style.color       = allowed ? '#fff' : 'var(--text-muted)';
+        b.classList.toggle('selected', allowed);
+        b.disabled = true;
+        b.style.opacity = allowed ? '1' : '0.35';
+        b.style.cursor = 'not-allowed';
+        b.title = 'Score filter locked by campaign';
+      });
+    }, 200);
+  }
 
   // ── Auto-set canvassFor race from campaign district — lock step-race ──
   if(fa.district && fa.district !== 'all'){
