@@ -5928,19 +5928,34 @@ function _mqRebuildQuickPicks(){
 
 function showMailQtyPicker(voterList){
   _mqPendingList = voterList;
-  _mqScore = 'all';
+  // Auto-set score filter from candidate focus if set
+  const fa = (candidateSession && candidateSession.focusAreas) || {};
+  if(fa.score === 'strong')      _mqScore = 'strong';
+  else if(fa.score === 'leans')  _mqScore = 'leansstrong';
+  else                           _mqScore = 'all';
   _mqMailMode = 'household';
   // Reset mode buttons
   const hhBtn = document.getElementById('mq-mode-hh');
   const indBtn = document.getElementById('mq-mode-ind');
   if(hhBtn)  { hhBtn.style.background='var(--fci-sky)'; hhBtn.style.borderColor='var(--fci-sky)'; hhBtn.style.color='#fff'; }
   if(indBtn) { indBtn.style.background='var(--surface2)'; indBtn.style.borderColor='var(--border)'; indBtn.style.color='var(--text)'; }
-  // Reset score buttons
+  // Set score buttons — highlight the auto-selected one, lock if candidate has a preference
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
-    const isAll = b.dataset.score === 'all';
-    b.style.background = isAll ? 'var(--fci-sky)' : 'var(--surface2)';
-    b.style.borderColor = isAll ? 'var(--fci-sky)' : 'var(--border)';
-    b.style.color = isAll ? '#fff' : 'var(--text)';
+    const isSelected = b.dataset.score === _mqScore;
+    b.style.background = isSelected ? 'var(--fci-sky)' : 'var(--surface2)';
+    b.style.borderColor = isSelected ? 'var(--fci-sky)' : 'var(--border)';
+    b.style.color = isSelected ? '#fff' : 'var(--text)';
+    if(fa.score && fa.score !== 'all'){
+      b.disabled = !isSelected;
+      b.style.opacity = isSelected ? '1' : '0.35';
+      b.style.cursor = isSelected ? 'pointer' : 'not-allowed';
+      b.title = isSelected ? '' : 'Score filter locked by campaign';
+    } else {
+      b.disabled = false;
+      b.style.opacity = '1';
+      b.style.cursor = 'pointer';
+      b.title = '';
+    }
   });
   _mqRebuildQuickPicks();
   document.getElementById('mail-qty-overlay').style.display = 'flex';
