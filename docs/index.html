@@ -77,7 +77,7 @@ async function ccCanvassPrec(normalizedPrec, displayPrec, isVacant){
 
     hideLoadingOverlay();
 
-    const vacantMsg = isVacant ? '⚠️ This seat is VACANT — ask if they'd like to run!' : '';
+    const vacantMsg = isVacant ? '⚠️ This seat is VACANT — ask if they\'d like to run!' : '';
     if(!targets.length){
       toast('No strong/leans Dems found in ' + displayPrec, true);
       return;
@@ -7143,7 +7143,8 @@ function _launchVolCampaign(cam, mode){
     // Fully collapse the mode step so it appears already-done
     document.getElementById('body-mode').style.display = 'none';
     document.getElementById('chip-mode').style.display = 'inline';
-    document.getElementById('change-mode').style.display = 'inline';
+    // Hide change-mode — mode is locked by campaign
+    document.getElementById('change-mode').style.display = 'none';
     const modeStep = document.getElementById('step-mode');
     if(modeStep){ modeStep.classList.remove('active'); modeStep.classList.add('done'); }
   }, 100);
@@ -7223,8 +7224,10 @@ function applyVolunteerFocusToWizard(cam){
           });
           if(!raceBtn.classList.contains('selected')) raceBtn.click();
         }
-        const changeRace = document.getElementById('change-race');
-        if(changeRace) changeRace.style.display = 'none';
+        const changeRaceEl = document.getElementById('change-race');
+        if(changeRaceEl) changeRaceEl.style.display = 'none';
+        const changeRaceBtnEl = document.getElementById('change-race-btn');
+        if(changeRaceBtnEl) changeRaceBtnEl.style.display = 'none';
 
         // Filter area buttons by district
         if(allowedAreas){
@@ -7262,8 +7265,10 @@ function applyVolunteerFocusToWizard(cam){
         });
         if(!raceBtn.classList.contains('selected')) raceBtn.click();
       }
-      const changeRace = document.getElementById('change-race');
-      if(changeRace) changeRace.style.display = 'none';
+      const changeRaceEl2 = document.getElementById('change-race');
+      if(changeRaceEl2) changeRaceEl2.style.display = 'none';
+      const changeRaceBtnEl2 = document.getElementById('change-race-btn');
+      if(changeRaceBtnEl2) changeRaceBtnEl2.style.display = 'none';
     }, 150);
   } else {
     // No specific district — volunteer must pick a race
@@ -7300,9 +7305,15 @@ function applyVolunteerFocusToWizard(cam){
           if(label && label.classList.contains('area-group-label')) label.style.display = 'none';
         }
       });
-      // Hide the "Change" link for area step
-      const changeArea = document.getElementById('change-area');
-      if(changeArea) changeArea.style.display = 'none';
+      // Hide the "Change" links for area step — locked by campaign
+      const changeAreaEl = document.getElementById('change-area');
+      if(changeAreaEl) changeAreaEl.style.display = 'none';
+      // Also disable all visible area buttons so volunteer can't re-pick
+      document.querySelectorAll('#body-area .area-btn:not([style*="display: none"])').forEach(b => {
+        b.disabled = true;
+        b.style.cursor = 'not-allowed';
+        b.title = 'Area locked by campaign';
+      });
     }, 300);
   } else {
     // No city — volunteer picks area themselves; race auto-collapses via _volRaceAutoCollapse
@@ -7627,6 +7638,7 @@ function doForgotPin(){
 const ADMIN_KEY = 'fci_admins';  // now stores array of {email, hash}
 let adminSession = false;
 let _adminEmail = '';
+let _adminSessionToken = '';
 
 function loadAdmins(){
   try{ return JSON.parse(localStorage.getItem(ADMIN_KEY)||'[]'); }catch(e){ return []; }
@@ -7640,45 +7652,69 @@ function showAdminLogin(){
   document.getElementById('cand-admin-form').style.display='';
   document.getElementById('cand-modal-title').textContent='Admin Login';
   document.getElementById('cand-admin-err').style.display='none';
-  // Show "Create first admin" hint if no admins yet
+  // Check API for whether any admins exist yet
   const hint = document.getElementById('admin-first-hint');
-  if(hint) hint.style.display = loadAdmins().length===0 ? '' : 'none';
+  if(hint){
+    fetch(WORKER_URL + '/api/auth/users', { headers: { 'X-FCI-Key': FCI_API_KEY } })
+      .then(r=>r.json())
+      .then(data=>{
+        const admins = (data.users||[]).filter(u=>u.role==='admin');
+        hint.style.display = admins.length === 0 ? '' : 'none';
+      }).catch(()=>{ hint.style.display = 'none'; });
+  }
 }
 
 async function adminLogin(){
   const email = (document.getElementById('cand-admin-email')||{value:''}).value.trim().toLowerCase();
   const pw    = document.getElementById('cand-admin-pw').value.trim();
-  const err   = document.getElementById('cand-admin-err');
-  err.style.display='none';
-  const admins = loadAdmins();
-  // Legacy single-pw fallback
-  const LEGACY_HASH = '8fb32b8bb42ea24b9605b3ecb10f3f43172dfe4f86c58acc69f85749926b60fd';
-  if(!pw){ err.textContent='Enter your password'; err.style.display=''; return; }
-  const h = await hashPin(pw);
-  if(admins.length===0){
-    // No admins set up yet — accept legacy 'admin' password, email not required
-    if(h !== LEGACY_HASH){ err.textContent='Incorrect password — use "admin" for first login'; err.style.display=''; return; }
-  } else {
-    if(!email){ err.textContent='Enter your email address'; err.style.display=''; return; }
-    const match = admins.find(a=>a.email===email && a.hash===h);
-    if(!match){ err.textContent='Email or password incorrect'; err.style.display=''; return; }
-    _adminEmail = email;
-  }
-  adminSession=true;
-  document.getElementById('cand-login-overlay').style.display='none';
+  const errEl = document.getElementById('cand-admin-err');
+  errEl.style.display='none';
+  if(!email){ errEl.textContent='Enter your email address'; errEl.style.display=''; return; }
+  if(!pw){ errEl.textContent='Enter your password'; errEl.style.display=''; return; }
+
   try {
-    openAdminDash();
+    const res = await fetch(WORKER_URL + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pw })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.ok){
+      errEl.textContent = data.error || 'Email or password incorrect';
+      errEl.style.display = '';
+      return;
+    }
+    // Store session token centrally in sessionStorage (not localStorage)
+    try { sessionStorage.setItem('fci_admin_token', data.token); } catch(e){}
+    try { sessionStorage.setItem('fci_admin_email', data.user.email); } catch(e){}
+    _adminEmail = data.user.email;
+    _adminSessionToken = data.token;
+    adminSession = true;
+    document.getElementById('cand-login-overlay').style.display='none';
+    try { openAdminDash(); } catch(e) {
+      const ol = document.getElementById('admin-dash-overlay');
+      if(ol) ol.style.display='flex';
+    }
+    try { updateQrFab(); } catch(e) {}
   } catch(e) {
-    console.error('openAdminDash error:', e);
-    // Fallback: force open the overlay directly
-    const ol = document.getElementById('admin-dash-overlay');
-    if(ol) ol.style.display='flex';
+    errEl.textContent = 'Connection error — try again';
+    errEl.style.display = '';
   }
-  try { updateQrFab(); } catch(e) {}
 }
 
-function adminLogout(){ _clearSession();
+function adminLogout(){
+  _clearSession();
+  // Clear API session
+  if(_adminSessionToken){
+    fetch(WORKER_URL + '/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-FCI-Session': _adminSessionToken }
+    }).catch(()=>{});
+  }
+  try { sessionStorage.removeItem('fci_admin_token'); sessionStorage.removeItem('fci_admin_email'); } catch(e){}
   adminSession = false;
+  _adminSessionToken = '';
+  _adminEmail = '';
   document.getElementById('admin-dash-overlay').style.display='none';
   updateQrFab();
   toast('Admin logged out');
@@ -7813,32 +7849,62 @@ async function addAdminAccount(){
   const email = (document.getElementById('admin-new-email').value||'').trim().toLowerCase();
   const pw1   = document.getElementById('admin-new-pw').value.trim();
   const pw2   = document.getElementById('admin-new-pw2').value.trim();
-  const err   = document.getElementById('admin-pw-err');
-  err.style.display='none';
-  if(!email||!email.includes('@')){ err.textContent='Enter a valid email'; err.style.display=''; return; }
-  if(!pw1||pw1.length<6){ err.textContent='Password must be at least 6 characters'; err.style.display=''; return; }
-  if(pw1!==pw2){ err.textContent='Passwords do not match'; err.style.display=''; return; }
-  const admins = loadAdmins();
-  if(admins.find(a=>a.email===email)){ err.textContent='That email is already registered as admin'; err.style.display=''; return; }
-  const hash = await hashPin(pw1);
-  admins.push({email, hash});
-  saveAdmins(admins);
-  document.getElementById('admin-new-email').value='';
-  document.getElementById('admin-new-pw').value='';
-  document.getElementById('admin-new-pw2').value='';
-  renderAdminAccounts();
-  toast(`Admin account added: ${email} ✓`);
+  const errEl = document.getElementById('admin-pw-err');
+  errEl.style.display='none';
+  if(!email||!email.includes('@')){ errEl.textContent='Enter a valid email'; errEl.style.display=''; return; }
+  if(!pw1||pw1.length<6){ errEl.textContent='Password must be at least 6 characters'; errEl.style.display=''; return; }
+  if(pw1!==pw2){ errEl.textContent='Passwords do not match'; errEl.style.display=''; return; }
+  try {
+    const headers = { 'Content-Type': 'application/json', 'X-FCI-Key': FCI_API_KEY };
+    if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+    const res = await fetch(WORKER_URL + '/api/auth/register', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email, password: pw1, name: email.split('@')[0], role: 'admin' })
+    });
+    const data = await res.json();
+    if(!res.ok){ errEl.textContent = data.error || 'Failed to create account'; errEl.style.display=''; return; }
+    document.getElementById('admin-new-email').value='';
+    document.getElementById('admin-new-pw').value='';
+    document.getElementById('admin-new-pw2').value='';
+    renderAdminAccounts();
+    toast(`Admin account added: ${email} ✓`);
+  } catch(e) {
+    errEl.textContent = 'Connection error — try again'; errEl.style.display='';
+  }
 }
 
 async function removeAdminAccount(email){
-  const admins = loadAdmins().filter(a=>a.email!==email);
-  saveAdmins(admins);
+  // Get user list and delete via API
+  try {
+    const headers = { 'X-FCI-Key': FCI_API_KEY };
+    if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+    const res = await fetch(WORKER_URL + '/api/auth/users', { headers });
+    const data = await res.json();
+    const user = (data.users||[]).find(u=>u.email===email);
+    if(user){
+      await fetch(WORKER_URL + '/api/auth/users/' + encodeURIComponent(user.id), {
+        method: 'DELETE', headers
+      });
+    }
+  } catch(e){}
   renderAdminAccounts();
   toast(`Removed admin: ${email}`);
 }
 
 function renderAdminAccounts(){
-  const admins = loadAdmins();
+  // Load from API
+  const headers = { 'X-FCI-Key': FCI_API_KEY };
+  if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+  fetch(WORKER_URL + '/api/auth/users', { headers })
+    .then(r=>r.json())
+    .then(data=>{
+      const admins = (data.users||[]).filter(u=>u.role==='admin');
+      _renderAdminAccountsList(admins);
+    }).catch(()=>{ _renderAdminAccountsList([]); });
+}
+
+function _renderAdminAccountsList(admins){
   const el = document.getElementById('admin-accounts-list');
   if(!el) return;
   if(!admins.length){
@@ -8494,6 +8560,29 @@ function exportCandidateCSV(){
 // Only register SW when served from a real deployment (not preview/blob/file)
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
+// Restore admin session from sessionStorage if token exists
+(async ()=>{
+  try {
+    const token = sessionStorage.getItem('fci_admin_token');
+    if(token){
+      const res = await fetch(WORKER_URL + '/api/auth/me', {
+        headers: { 'X-FCI-Session': token, 'X-FCI-Key': FCI_API_KEY }
+      });
+      if(res.ok){
+        const data = await res.json();
+        if(data.user && data.user.role === 'admin'){
+          _adminSessionToken = token;
+          _adminEmail = data.user.email;
+          adminSession = true;
+          try { updateQrFab(); } catch(e){}
+        }
+      } else {
+        sessionStorage.removeItem('fci_admin_token');
+        sessionStorage.removeItem('fci_admin_email');
+      }
+    }
+  } catch(e){}
+})();
 window._realMaybeCollectVolInfo = maybeCollectVolInfo;
 // Wire real doAuthLogin - only if it's a different function than the stub
 if(typeof doAuthLogin === 'function' && doAuthLogin !== window._doAuthLoginStub){
