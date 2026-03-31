@@ -7563,7 +7563,7 @@ async function _pullContactsFromAPI(camId){
 
     applyToList(voters);
     applyToList(mailList);
-    renderRoutes();  // refresh UI
+    if(typeof renderWalk === 'function') renderWalk();  // refresh walk UI
     if(typeof renderMail === 'function') renderMail(); // refresh mail UI if active
   } catch(e){ console.warn('Contact pull fail:', e); }
 }
