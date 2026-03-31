@@ -1,3 +1,4 @@
+import re
 #!/usr/bin/env python3
 """
 FCI FieldMap — Ohio SOS CSV Voter Migration Script
@@ -321,7 +322,7 @@ def build_voter_record(hh_key, members):
         'donations':    [],
         'schoolDist':   school_dist,
         'mailAddr':     _get_mail_addr(row0, addr, city, zip5),
-        'mailOnly':     len(members) > 8 or bool(_re.search(r'\bLOT\b', addr.upper())),  # large HH or trailer park lot = mail only
+        'mailOnly':     len(members) > 8 or bool(re.search(r'\bLOT\b', addr.upper())),  # large HH or trailer park lot = mail only
         'countyNum':    dists['countyNum'] or str(row0.get('COUNTY_NUMBER','') or row0.get('CNTYIDNUM','') or '').strip(),
     }
     return record

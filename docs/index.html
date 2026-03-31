@@ -23,6 +23,83 @@ function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-ove
 function showAuthRegister(){ openCandidatePanel(); } // Route to candidate panel
 function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
 function closeAdminDash(){ _hide('admin-dash-overlay'); }
+
+// ── CENTRAL COMMITTEE CANVASSING ────────────────────────────────────────────
+function ccRenderList(filter){
+  const list = document.getElementById('cc-seat-list');
+  if(!list) return;
+  const seats = filter === 'vacant' ? CC_SEATS.filter(s=>s.vacant)
+              : filter === 'filled' ? CC_SEATS.filter(s=>!s.vacant)
+              : CC_SEATS;
+  list.innerHTML = seats.map(s => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:700;color:var(--text);">${s.precinct}</div>
+        <div style="font-size:11px;color:${s.vacant?'var(--danger)':'var(--strong)'};">${s.vacant?'⚠️ VACANT':'✓ '+s.member}</div>
+      </div>
+      <button onclick="ccCanvassPrec('${s.normalized}','${s.precinct.replace(/'/,"\'")}',${s.vacant})"
+        style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+        📬 Canvass
+      </button>
+    </div>`).join('');
+}
+function ccShowAll()    { ccRenderList('all');    }
+function ccShowVacant() { ccRenderList('vacant'); }
+function ccShowFilled() { ccRenderList('filled'); }
+
+async function ccCanvassPrec(normalizedPrec, displayPrec, isVacant){
+  // Close admin dash, set up mail canvass for this precinct's strong Dems
+  closeAdminDash();
+  toast(`Loading strong Dems in ${displayPrec}…`);
+
+  // Fetch voters for this precinct
+  showLoadingOverlay(`Loading voters in ${displayPrec}…`);
+  try {
+    const r = await apiGet('/api/voters', { county_num: '23', limit: 5000 });
+    const all = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter);
+    // Filter to this precinct
+    const precVoters = all.filter(v => {
+      const vPrec = (v.precinctName || '').toUpperCase();
+      return vPrec === normalizedPrec.toUpperCase();
+    });
+
+    if(!precVoters.length){
+      hideLoadingOverlay();
+      toast('No voters found for ' + displayPrec, true);
+      return;
+    }
+
+    // Score each voter, keep strong + leans
+    precVoters.forEach(v => {
+      if(!v.score) v.score = autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
+    });
+    const targets = precVoters.filter(v => v.score === 'strong' || v.score === 'leans');
+
+    hideLoadingOverlay();
+
+    const vacantMsg = isVacant ? '⚠️ This seat is VACANT — ask if they'd like to run!' : '';
+    if(!targets.length){
+      toast('No strong/leans Dems found in ' + displayPrec, true);
+      return;
+    }
+
+    // Show mail qty picker for these voters
+    canvassMode = 'mail';
+    canvassFor = 'Central Committee — ' + displayPrec;
+    filterField = 'precinctName';
+    filterDistrict = normalizedPrec;
+    ALL_VOTERS_RAW = all;
+    voters = precVoters;
+    mailList = targets;
+    showScreen('results');
+    switchTab('mail');
+    showMailQtyPicker(targets);
+    if(vacantMsg) setTimeout(()=>toast(vacantMsg), 800);
+  } catch(e) {
+    hideLoadingOverlay();
+    toast('Error loading voters: ' + e.message, true);
+  }
+}
 function closeCandidateDash(){ _hide('cand-dash-overlay'); }
 function closeCandidateLogin(){ _hide('cand-login-overlay'); }
 function closeAllPopups(){ ['modal-overlay','walk-sheet-overlay','mail-labels-overlay','mail-qty-overlay','scan-overlay','sheet-review-overlay','voter-lookup-overlay','auth-login-overlay','auth-register-overlay'].forEach(_hide); }
@@ -1899,6 +1976,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin — Edit Voter Record</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Name Override</label>
+          <input id="m-admin-name" type="text" placeholder="First Last"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
           <input id="m-admin-phone" type="tel" placeholder="(614) 555-0100"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
@@ -1906,6 +1988,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Email Address</label>
           <input id="m-admin-email" type="email" placeholder="voter@email.com"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Mailing Address Override</label>
+          <input id="m-admin-address" type="text" placeholder="123 MAIN ST, LANCASTER 43130"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
         </div>
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
@@ -2121,6 +2208,7 @@ function hideLoadingOverlay(){
 }
 
 
+const CC_SEATS = [{"precinct": "Amanda A", "normalized": "AMANDA A", "member": "VACANT", "vacant": true}, {"precinct": "Amanda B", "normalized": "AMANDA B", "member": "VACANT", "vacant": true}, {"precinct": "Baltimore A", "normalized": "BALTIMORE VILLAGE A", "member": "VACANT", "vacant": true}, {"precinct": "Baltimore B", "normalized": "BALTIMORE VILLAGE B", "member": "Michael Lieber", "vacant": false}, {"precinct": "Berne A", "normalized": "BERNE A", "member": "VACANT", "vacant": true}, {"precinct": "Berne B", "normalized": "BERNE B", "member": "VACANT", "vacant": true}, {"precinct": "Berne C", "normalized": "BERNE C", "member": "VACANT", "vacant": true}, {"precinct": "Berne D", "normalized": "BERNE D", "member": "Michael K. Oatney", "vacant": false}, {"precinct": "Bloom A", "normalized": "BLOOM A", "member": "Tyler Shahan", "vacant": false}, {"precinct": "Bloom B", "normalized": "BLOOM B", "member": "Reed M. Bailey", "vacant": false}, {"precinct": "Bloom C", "normalized": "BLOOM C", "member": "VACANT", "vacant": true}, {"precinct": "Bloom D", "normalized": "BLOOM D", "member": "Casey Belli", "vacant": false}, {"precinct": "Bloom E", "normalized": "BLOOM E", "member": "Paul R. Johnson", "vacant": false}, {"precinct": "Bremen Village", "normalized": "BREMEN VILLAGE", "member": "Mary F. Kunkler", "vacant": false}, {"precinct": "Clearcreek A", "normalized": "CLEARCREEK A", "member": "Amy L. Morris", "vacant": false}, {"precinct": "Clearcreek B", "normalized": "CLEARCREEK B", "member": "Amy Rigsby", "vacant": false}, {"precinct": "Columbus A", "normalized": "COLUMBUS CITY A", "member": "VACANT", "vacant": true}, {"precinct": "Columbus B", "normalized": "COLUMBUS CITY B", "member": "VACANT", "vacant": true}, {"precinct": "Columbus C", "normalized": "COLUMBUS CITY C", "member": "VACANT", "vacant": true}, {"precinct": "Columbus D", "normalized": "COLUMBUS CITY D", "member": "VACANT", "vacant": true}, {"precinct": "Columbus E", "normalized": "COLUMBUS CITY E", "member": "Nancy T. Ashley", "vacant": false}, {"precinct": "Columbus F", "normalized": "COLUMBUS CITY F", "member": "Caroline Kreis", "vacant": false}, {"precinct": "Greenfield A", "normalized": "GREENFIELD A", "member": "VACANT", "vacant": true}, {"precinct": "Greenfield B", "normalized": "GREENFIELD B", "member": "Michael Scarmack", "vacant": false}, {"precinct": "Greenfield C", "normalized": "GREENFIELD C", "member": "Jeff Tipple", "vacant": false}, {"precinct": "Greenfield D", "normalized": "GREENFIELD D", "member": "Jeff Kraner", "vacant": false}, {"precinct": "Hocking A", "normalized": "HOCKING A", "member": "VACANT", "vacant": true}, {"precinct": "Hocking B", "normalized": "HOCKING B", "member": "Robert Williams", "vacant": false}, {"precinct": "Hocking C", "normalized": "HOCKING C", "member": "Leah Hackleman-Good", "vacant": false}, {"precinct": "Lancaster 1-A", "normalized": "LANCASTER CITY 1-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 1-B", "normalized": "LANCASTER CITY 1-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 1-C", "normalized": "LANCASTER CITY 1-C", "member": "Allison A. Appel", "vacant": false}, {"precinct": "Lancaster 1-D", "normalized": "LANCASTER CITY 1-D", "member": "Nancy McAtee", "vacant": false}, {"precinct": "Lancaster 1-E", "normalized": "LANCASTER CITY 1-E", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 2-A", "normalized": "LANCASTER CITY 2-A", "member": "Ryan Weaver", "vacant": false}, {"precinct": "Lancaster 2-B", "normalized": "LANCASTER CITY 2-B", "member": "Jay A. Mattlin", "vacant": false}, {"precinct": "Lancaster 2-C", "normalized": "LANCASTER CITY 2-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 2-D", "normalized": "LANCASTER CITY 2-D", "member": "Howard Blaisdell", "vacant": false}, {"precinct": "Lancaster 3-A", "normalized": "LANCASTER CITY 3-A", "member": "Kenneth D. Culver", "vacant": false}, {"precinct": "Lancaster 3-B", "normalized": "LANCASTER CITY 3-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 3-C", "normalized": "LANCASTER CITY 3-C", "member": "Neil C. Riggs", "vacant": false}, {"precinct": "Lancaster 3-D", "normalized": "LANCASTER CITY 3-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 3-E", "normalized": "LANCASTER CITY 3-E", "member": "Cary J. Brown", "vacant": false}, {"precinct": "Lancaster 4-A", "normalized": "LANCASTER CITY 4-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 4-B", "normalized": "LANCASTER CITY 4-B", "member": "Debra A. Turner", "vacant": false}, {"precinct": "Lancaster 4-C", "normalized": "LANCASTER CITY 4-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 4-D", "normalized": "LANCASTER CITY 4-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 5-A", "normalized": "LANCASTER CITY 5-A", "member": "Bryan Everitt", "vacant": false}, {"precinct": "Lancaster 5-B", "normalized": "LANCASTER CITY 5-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 5-C", "normalized": "LANCASTER CITY 5-C", "member": "Lisa Rosser", "vacant": false}, {"precinct": "Lancaster 5-D", "normalized": "LANCASTER CITY 5-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-A", "normalized": "LANCASTER CITY 6-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-B", "normalized": "LANCASTER CITY 6-B", "member": "Aimee Aldridge", "vacant": false}, {"precinct": "Lancaster 6-C", "normalized": "LANCASTER CITY 6-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-D", "normalized": "LANCASTER CITY 6-D", "member": "VACANT", "vacant": true}, {"precinct": "Liberty A", "normalized": "LIBERTY A", "member": "VACANT", "vacant": true}, {"precinct": "Liberty B", "normalized": "LIBERTY B", "member": "VACANT", "vacant": true}, {"precinct": "Liberty C", "normalized": "LIBERTY C", "member": "VACANT", "vacant": true}, {"precinct": "Liberty D", "normalized": "LIBERTY D", "member": "VACANT", "vacant": true}, {"precinct": "Lithopolis A", "normalized": "LITHOPOLIS VILLAGE A", "member": "VACANT", "vacant": true}, {"precinct": "Lithopolis B", "normalized": "LITHOPOLIS VILLAGE B", "member": "Amber Daniels", "vacant": false}, {"precinct": "Madison A", "normalized": "MADISON A", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington A", "normalized": "PICKERINGTON CITY A", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington B", "normalized": "PICKERINGTON CITY B", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington C", "normalized": "PICKERINGTON CITY C", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington D", "normalized": "PICKERINGTON CITY D", "member": "Chris Potelicki", "vacant": false}, {"precinct": "Pickerington E", "normalized": "PICKERINGTON CITY E", "member": "David Gellert", "vacant": false}, {"precinct": "Pickerington F", "normalized": "PICKERINGTON CITY F", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington G", "normalized": "PICKERINGTON CITY G", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington H", "normalized": "PICKERINGTON CITY H", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington I", "normalized": "PICKERINGTON CITY I", "member": "Tony Barletta", "vacant": false}, {"precinct": "Pickerington J", "normalized": "PICKERINGTON CITY J", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington K", "normalized": "PICKERINGTON CITY K", "member": "Charles E. Newman", "vacant": false}, {"precinct": "Pickerington L", "normalized": "PICKERINGTON CITY L", "member": "Lazaro Fuentes", "vacant": false}, {"precinct": "Pickerington M", "normalized": "PICKERINGTON CITY M", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington N", "normalized": "PICKERINGTON CITY N", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington O", "normalized": "PICKERINGTON CITY O", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington P", "normalized": "PICKERINGTON CITY P", "member": "Adrienne M. Bowden", "vacant": false}, {"precinct": "Pickerington Q", "normalized": "PICKERINGTON CITY Q", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant A", "normalized": "PLEASANT A", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant B", "normalized": "PLEASANT B", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant C", "normalized": "PLEASANT C", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant D", "normalized": "PLEASANT D", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant E", "normalized": "PLEASANT E", "member": "David C. Comer", "vacant": false}, {"precinct": "Pleasant F", "normalized": "PLEASANT F", "member": "VACANT", "vacant": true}, {"precinct": "Richland East", "normalized": "RICHLAND EAST", "member": "Rachel McCandlish", "vacant": false}, {"precinct": "Richland West", "normalized": "RICHLAND WEST", "member": "David Arthur Bugh II", "vacant": false}, {"precinct": "Rushcreek A", "normalized": "RUSHCREEK A", "member": "VACANT", "vacant": true}, {"precinct": "Rushcreek B", "normalized": "RUSHCREEK B", "member": "VACANT", "vacant": true}, {"precinct": "Violet A", "normalized": "VIOLET A", "member": "Jennifer Lynn Lewis", "vacant": false}, {"precinct": "Violet B", "normalized": "VIOLET B", "member": "Darren Meade", "vacant": false}, {"precinct": "Violet C", "normalized": "VIOLET C", "member": "VACANT", "vacant": true}, {"precinct": "Violet D", "normalized": "VIOLET D", "member": "Michele Ward-Tackett", "vacant": false}, {"precinct": "Violet E", "normalized": "VIOLET E", "member": "VACANT", "vacant": true}, {"precinct": "Violet F", "normalized": "VIOLET F", "member": "Willie J. Pinkins", "vacant": false}, {"precinct": "Violet G", "normalized": "VIOLET G", "member": "Etha C. Brown", "vacant": false}, {"precinct": "Violet H", "normalized": "VIOLET H", "member": "VACANT", "vacant": true}, {"precinct": "Violet I", "normalized": "VIOLET I", "member": "Karen Sottosanti", "vacant": false}, {"precinct": "Violet J", "normalized": "VIOLET J", "member": "VACANT", "vacant": true}, {"precinct": "Violet K", "normalized": "VIOLET K", "member": "Samantha Low", "vacant": false}, {"precinct": "Violet L", "normalized": "VIOLET L", "member": "VACANT", "vacant": true}, {"precinct": "Violet M", "normalized": "VIOLET M", "member": "VACANT", "vacant": true}, {"precinct": "Violet N", "normalized": "VIOLET N", "member": "Brett Riffle", "vacant": false}, {"precinct": "Violet O", "normalized": "VIOLET O", "member": "Brett Pransky", "vacant": false}, {"precinct": "Violet P", "normalized": "VIOLET P", "member": "Jeremy A. VanMeter", "vacant": false}, {"precinct": "Violet Q", "normalized": "VIOLET Q", "member": "Jean Marie Parker", "vacant": false}, {"precinct": "Violet R", "normalized": "VIOLET R", "member": "VACANT", "vacant": true}, {"precinct": "Walnut A", "normalized": "WALNUT A", "member": "Faye Whitaker", "vacant": false}, {"precinct": "Walnut B", "normalized": "WALNUT B", "member": "VACANT", "vacant": true}, {"precinct": "Walnut C", "normalized": "WALNUT C", "member": "VACANT", "vacant": true}, {"precinct": "Walnut D", "normalized": "WALNUT D", "member": "James Kinniard", "vacant": false}];
 const FIELD_LOOKUP={"cong":{"0":"12TH CONGRESSIONAL"},"sen":{"0":"OHIO STATE SENATE 20"},"hou":{"0":"OHIO ST HOUSE REP 69","1":"OHIO ST HOUSE REP 73"},"precn":{"0":"AMANDA A","1":"AMANDA B","2":"BALTIMORE VILLAGE A","3":"BALTIMORE VILLAGE B","4":"BERNE A","5":"BERNE B","6":"BERNE C","7":"BERNE D","8":"BLOOM A","9":"BLOOM B","10":"BLOOM C","11":"BLOOM D","12":"BLOOM E","13":"BREMEN VILLAGE","14":"CLEARCREEK A","15":"CLEARCREEK B","16":"COLUMBUS CITY A","17":"COLUMBUS CITY B","18":"COLUMBUS CITY C","19":"COLUMBUS CITY D","20":"COLUMBUS CITY E","21":"COLUMBUS CITY F","22":"GREENFIELD A","23":"GREENFIELD B","24":"GREENFIELD C","25":"GREENFIELD D","26":"HOCKING A","27":"HOCKING B","28":"HOCKING C","29":"LANCASTER CITY 1-A","30":"LANCASTER CITY 1-B","31":"LANCASTER CITY 1-C","32":"LANCASTER CITY 1-D","33":"LANCASTER CITY 1-E","34":"LANCASTER CITY 2-A","35":"LANCASTER CITY 2-B","36":"LANCASTER CITY 2-C","37":"LANCASTER CITY 2-D","38":"LANCASTER CITY 3-A","39":"LANCASTER CITY 3-B","40":"LANCASTER CITY 3-C","41":"LANCASTER CITY 3-D","42":"LANCASTER CITY 3-E","43":"LANCASTER CITY 4-A","44":"LANCASTER CITY 4-B","45":"LANCASTER CITY 4-C","46":"LANCASTER CITY 4-D","47":"LANCASTER CITY 5-A","48":"LANCASTER CITY 5-B","49":"LANCASTER CITY 5-C","50":"LANCASTER CITY 5-D","51":"LANCASTER CITY 6-A","52":"LANCASTER CITY 6-B","53":"LANCASTER CITY 6-C","54":"LANCASTER CITY 6-D","55":"LIBERTY A","56":"LIBERTY B","57":"LIBERTY C","58":"LIBERTY D","59":"LITHOPOLIS VILLAGE A","60":"LITHOPOLIS VILLAGE B","61":"MADISON A","62":"PICKERINGTON CITY A","63":"PICKERINGTON CITY B","64":"PICKERINGTON CITY C","65":"PICKERINGTON CITY D","66":"PICKERINGTON CITY E","67":"PICKERINGTON CITY F","68":"PICKERINGTON CITY G","69":"PICKERINGTON CITY H","70":"PICKERINGTON CITY I","71":"PICKERINGTON CITY J","72":"PICKERINGTON CITY K","73":"PICKERINGTON CITY L","74":"PICKERINGTON CITY M","75":"PICKERINGTON CITY N","76":"PICKERINGTON CITY O","77":"PICKERINGTON CITY P","78":"PICKERINGTON CITY Q","79":"PLEASANT A","80":"PLEASANT B","81":"PLEASANT C","82":"PLEASANT D","83":"PLEASANT E","84":"PLEASANT F","85":"RICHLAND EAST","86":"RICHLAND WEST","87":"RUSHCREEK A","88":"RUSHCREEK B","89":"VIOLET A","90":"VIOLET B","91":"VIOLET C","92":"VIOLET D","93":"VIOLET E","94":"VIOLET F","95":"VIOLET G","96":"VIOLET H","97":"VIOLET I","98":"VIOLET J","99":"VIOLET K","100":"VIOLET L","101":"VIOLET M","102":"VIOLET N","103":"VIOLET O","104":"VIOLET P","105":"VIOLET Q","106":"VIOLET R","107":"WALNUT A","108":"WALNUT B","109":"WALNUT C","110":"WALNUT D"},"sch":{"0":"AMANDA-CLEARCRK LSD","1":"BERNE UNION LSD","2":"BLOOM-CARROLL LSD","3":"CANAL WINCHESTER LSD","4":"FAIRFIELD UNION LSD","5":"LANCASTER CSD","6":"LIBERTY UNION LSD","7":"PICKERINGTON LSD","8":"SW LICKING LSD","9":"WALNUT TOWNSHIP LSD"},"city":{"0":"COLUMBUS CITY","1":"LANCASTER CITY","2":"PICKERINGTON CITY","3":"REYNOLDSBURG CITY"},"twp":{"0":"AMANDA TWP","1":"BERNE TWP","2":"BLOOM TWP","3":"CLEARCREEK TWP","4":"GREENFIELD TWP","5":"HOCKING TWP","6":"LIBERTY TWP","7":"MADISON TWP","8":"MONTGOMERY TWP","9":"PLEASANT TWP","10":"RICHLAND TWP","11":"RUSHCREEK TWP","12":"VIOLET TWP","13":"WALNUT TWP"},"vil":{"0":"BALTIMORE VLG","1":"BREMEN VLG","2":"CARROLL VLG","3":"LITHOPOLIS VLG","4":"RUSHVILLE VLG"},"prec":{"0":"01AA  1","1":"01AA  2","2":"01AB  1","3":"01AB  2","4":"01AB  3","5":"02BA  1","6":"02BB  1","7":"03BA  1","8":"03BA  2","9":"03BA  3","10":"03BB  1","11":"03BC  1","12":"03BD  1","13":"03BD  2","14":"04BA  1","15":"04BA  2","16":"04BA  3","17":"04BB  1","18":"04BB  2","19":"04BC  1","20":"04BC  2","21":"04BD  1","22":"04BD  2","23":"04BE  1","24":"04BE  2","25":"05BV  1","26":"06CA  1","27":"06CA  2","28":"06CB  1","29":"07CA  1","30":"07CB  1","31":"07CC  1","32":"07CD  1","33":"07CE  1","34":"07CF  1","35":"08GA  1","36":"08GA  2","37":"08GA  3","38":"08GA  4","39":"08GB  1","40":"08GB  2","41":"08GC  1","42":"08GC  2","43":"08GD  1","44":"08GD  2","45":"09HA  1","46":"09HA  2","47":"09HB  1","48":"09HC  1","49":"09HC  2","50":"101A  1","51":"101B  1","52":"101C  1","53":"101D  1","54":"101E  1","55":"101E  2","56":"102A  1","57":"102B  1","58":"102C  1","59":"102D  1","60":"103A  1","61":"103B  1","62":"103C  1","63":"103D  1","64":"103E  1","65":"104A  1","66":"104B  1","67":"104C  1","68":"104D  1","69":"105A  1","70":"105B  1","71":"105C  2","72":"105D  1","73":"105D  2","74":"106A  1","75":"106B  1","76":"106C  1","77":"106D  1","78":"11LA  1","79":"11LA  2","80":"11LA  3","81":"11LA  4","82":"11LB  1","83":"11LB  2","84":"11LC  1","85":"11LC  2","86":"11LC  3","87":"11LC  4","88":"11LD  1","89":"11LD  2","90":"12LA  1","91":"12LA  2","92":"12LA  3","93":"12LB  1","94":"13MA  1","95":"13MA  2","96":"14PA  1","97":"14PB  1","98":"14PC  1","99":"14PD  1","100":"14PE  1","101":"14PF  1","102":"14PF  2","103":"14PG  1","104":"14PH  1","105":"14PI  1","106":"14PJ  1","107":"14PK  1","108":"14PL  1","109":"14PM  1","110":"14PN  1","111":"14PO  1","112":"14PP  1","113":"14PQ  1","114":"15PA  1","115":"15PA  2","116":"15PB  1","117":"15PB  2","118":"15PB  3","119":"15PC  1","120":"15PC  2","121":"15PD  1","122":"15PD  2","123":"15PE  1","124":"15PF  1","125":"16RE  1","126":"16RE  2","127":"16RW  1","128":"16RW  2","129":"17RA  1","130":"17RB  1","131":"18VA  1","132":"18VA  2","133":"18VA  3","134":"18VB  1","135":"18VB  2","136":"18VB  3","137":"18VC  1","138":"18VC  3","139":"18VC  4","140":"18VD  1","141":"18VD  2","142":"18VD  3","143":"18VD  4","144":"18VE  1","145":"18VF  1","146":"18VG  1","147":"18VH  1","148":"18VI  1","149":"18VJ  1","150":"18VK  1","151":"18VL  1","152":"18VM  1","153":"18VN  1","154":"18VO  1","155":"18VP  1","156":"18VQ  1","157":"18VR  1","158":"19WA  1","159":"19WA  2","160":"19WA  3","161":"19WA  4","162":"19WB  1","163":"19WB  2","164":"19WB  3","165":"19WC  1","166":"19WC  2","167":"19WD  1","168":"19WD  2","169":"19WD  3","170":"19WD  5"}};
 
 // ── Voter data via API ───────────────────────────────────────────
@@ -4125,6 +4213,13 @@ function adminCreateCampaign(){
   document.getElementById('admin-cam-seat').value = '';
   renderAdminCampaignList();
   toast('Campaign "' + name + '" created ✓');
+  // Close all overlays and return to main screen
+  ['admin-dash-overlay','cand-dash-overlay','cand-login-overlay','vol-start-overlay',
+   'auth-login-overlay','auth-register-overlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = 'none';
+  });
+  showScreen('upload');
 }
 
 async function adminCanvassAs(camId){
@@ -5883,6 +5978,7 @@ function mqSetMode(mode, btn){
 }
 
 function mqPickScore(btn){
+  if(btn.disabled) return;  // locked by candidate score focus
   _mqScore = btn.dataset.score;
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
     const sel = b === btn;
@@ -6609,7 +6705,10 @@ async function generateRoutes(){
   await geocodeAll(voters);
   // Separate mail-only households (assisted living/dorms) before clustering
   const _isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
-  const _mailOnlyVoters = voters.filter(v => v.mailOnly || _isLotAddr(v));
+  // Exclude mailOnly households with no lot number AND many members
+  // These are catch-all park addresses where residents didn't register with a lot — undeliverable
+  const _isUndeliverable = v => v.mailOnly && !_isLotAddr(v) && (v.hh || 1) > 4;
+  const _mailOnlyVoters = voters.filter(v => (v.mailOnly || _isLotAddr(v)) && !_isUndeliverable(v));
   const _doorVoters = voters.filter(v => !v.mailOnly && !_isLotAddr(v));
   const res=clusterVoters(_doorVoters);
   walkClusters=res.walk;
@@ -7594,6 +7693,7 @@ function openAdminDash(){
   if(!ol){ console.error('admin-dash-overlay not found'); return; }
   ol.style.display='flex';
   try { renderAdminCampaignList(); } catch(e){ console.error('renderAdminCampaignList:', e); }
+  setTimeout(()=>ccRenderList('vacant'), 100); // default: show vacant CC seats
   try { renderAdminAccounts(); } catch(e){ console.error('renderAdminAccounts:', e); }
   const npe = document.getElementById('admin-new-email');
   if(npe) npe.value='';
@@ -7626,6 +7726,7 @@ async function renderAdminCampaignList(){
         <div style="font-size:11px;color:var(--text-muted);">${c.email||'no email'} · ${contacted} contacted</div>
       </div>
       <button onclick="adminCanvassAs('${c.id}')" style="background:var(--accent-bg);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🚶 Canvass</button>
+      <button onclick="adminEditCampaign('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">✏️ Edit</button>
       <button onclick="adminDeleteCampaign('${c.id}')" style="background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🗑 Delete</button>
       <button onclick="adminResetPin('${c.id}')" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:11px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🔑 Reset PIN</button>
     </div>`;
@@ -7657,6 +7758,55 @@ async function adminResetPin(camId){
   saveCampaigns(cams);
   toast(`PIN reset for ${cams[camId].name} ✓`);
   renderAdminCampaignList();
+}
+
+function adminEditCampaign(camId){
+  const cams = loadCampaigns();
+  const cam = cams[camId];
+  if(!cam) return;
+  // Store the id being edited
+  document.getElementById('admin-edit-cam-overlay').dataset.editId = camId;
+  // Populate fields
+  document.getElementById('edit-cam-name').value    = cam.name || '';
+  document.getElementById('edit-cam-seat').value    = cam.seat || '';
+  document.getElementById('edit-cam-email').value   = cam.email || '';
+  document.getElementById('edit-cam-message').value = cam.message || '';
+  document.getElementById('edit-cam-pin').value     = '';
+  document.getElementById('edit-cam-admin-only').checked = !!cam.adminOnly;
+  document.getElementById('edit-cam-err').style.display = 'none';
+  document.getElementById('admin-edit-cam-overlay').style.display = 'flex';
+}
+
+async function adminSaveEditCampaign(){
+  const overlay = document.getElementById('admin-edit-cam-overlay');
+  const camId = overlay.dataset.editId;
+  const cams = loadCampaigns();
+  const cam = cams[camId];
+  if(!cam) return;
+
+  const name    = document.getElementById('edit-cam-name').value.trim();
+  const seat    = document.getElementById('edit-cam-seat').value.trim();
+  const email   = document.getElementById('edit-cam-email').value.trim();
+  const message = document.getElementById('edit-cam-message').value.trim();
+  const pin     = document.getElementById('edit-cam-pin').value.trim();
+  const adminOnly = document.getElementById('edit-cam-admin-only').checked;
+  const err = document.getElementById('edit-cam-err');
+
+  if(!name){ err.textContent='Campaign name is required'; err.style.display=''; return; }
+  if(pin && pin.length < 4){ err.textContent='PIN must be at least 4 characters'; err.style.display=''; return; }
+
+  cam.name    = name;
+  cam.seat    = seat || cam.seat;
+  cam.email   = email || cam.email;
+  cam.message = message;
+  cam.adminOnly = adminOnly;
+  if(pin){ cam.pinHash = await hashPin(pin); cam.pinHint = pin.slice(0,2) + '****'; }
+
+  saveCampaigns(cams);
+  overlay.style.display = 'none';
+  renderAdminCampaignList();
+  if(typeof volShowCampaigns === 'function') volShowCampaigns();
+  toast('Campaign updated ✓');
 }
 
 async function addAdminAccount(){
@@ -8789,6 +8939,18 @@ if('serviceWorker' in navigator){
       </div>
     </div>
 
+    <!-- Central Committee Canvassing -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;">
+      <div style="font-size:12px;font-weight:700;color:var(--fci-sky);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;">🏛 Central Committee Recruitment</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">74 vacant seats · canvass strong Dems in each precinct</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button onclick="ccShowAll()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">All Precincts</button>
+        <button onclick="ccShowVacant()" style="background:var(--fci-red);border:none;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Vacant Only</button>
+        <button onclick="ccShowFilled()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Filled</button>
+      </div>
+      <div id="cc-seat-list" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;"></div>
+    </div>
+
     <!-- Admin password change -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;">
       <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:14px;">Admin Accounts</div>
@@ -9011,5 +9173,42 @@ if('serviceWorker' in navigator){
   </div>
 </div>
 
+<!-- Campaign Edit Modal -->
+<div id="admin-edit-cam-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:480px;margin:20px;padding:24px;box-shadow:0 20px 60px var(--shadow);overflow-y:auto;max-height:90vh;">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:18px;">✏️ Edit Campaign</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Campaign Name</div>
+        <input id="edit-cam-name" type="text" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Seat / Title</div>
+        <input id="edit-cam-seat" type="text" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div>
+        <input id="edit-cam-email" type="email" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Volunteer Message</div>
+        <textarea id="edit-cam-message" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">New PIN (leave blank to keep current)</div>
+        <input id="edit-cam-pin" type="text" placeholder="min 4 chars" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input id="edit-cam-admin-only" type="checkbox" style="width:16px;height:16px;cursor:pointer;">
+        <label for="edit-cam-admin-only" style="font-size:13px;color:var(--text);cursor:pointer;">Admin only (hide from volunteer login)</label>
+      </div>
+      <div id="edit-cam-err" style="display:none;font-size:12px;color:var(--danger);"></div>
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button onclick="adminSaveEditCampaign()" style="flex:1;background:var(--fci-navy);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Save Changes</button>
+        <button onclick="document.getElementById('admin-edit-cam-overlay').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
