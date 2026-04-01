@@ -3074,6 +3074,7 @@ function autoScore(party, voting, lastPrimary, specialsVoted, donations){
   if(donations && donations.length && donations.some(d => d.lean === 'D')) return 'strong';
 
   // Registered D + 2+ generals → strong
+  // Trust SOS party registration — it's the official record
   if(isDem && votedN >= 2) return 'strong';
 
   // NP + 4+ generals + D primary → leans
@@ -5349,8 +5350,45 @@ function showMailLabelsOverlay(voterList){
     }
 
     if(_mqMailMode === 'household'){
-      // ONE label per household — smart name combining
-      const hhName = _buildHouseholdName(v);
+      // ONE label per household — but only include members who match the score filter
+      // Score each individual member and filter to qualifying ones only
+      const vnsArr = v.vns ? (typeof v.vns === 'string' ? JSON.parse(v.vns) : v.vns) : [];
+      const members = v.voters && v.voters.length ? v.voters : vnsArr.map(vn => Array.isArray(vn) ? {name:(vn[0]||'')+' '+(vn[1]||''), age:vn[2], presOnly:vn[3]||false} : vn);
+
+      // Build a filtered voter object with only qualifying members
+      let qualifyingMembers = members;
+      if(_mqScore && _mqScore !== 'all' && members.length > 0){
+        qualifyingMembers = members.filter(m => {
+          const presOnly = Array.isArray(m) ? (m[3]||false) : (m&&m.presOnly)||false;
+          const s = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+          if(_mqScore === 'strong') return s === 'strong';
+          if(_mqScore === 'leans')  return s === 'leans';
+          if(_mqScore === 'leansstrong') return s === 'strong' || s === 'leans';
+          return true;
+        });
+        // If nobody qualifies, skip this household
+        if(!qualifyingMembers.length) continue;
+      }
+
+      // Build name from qualifying members only
+      const qualVns = qualifyingMembers.map(m => {
+        if(Array.isArray(m)) return {first:m[0]||'',last:m[1]||''};
+        const parts = (m.name||'').trim().split(' ');
+        return {first:parts[0]||'', last:parts.slice(1).join(' ')||''};
+      }).filter(p=>p.first);
+
+      let hhName;
+      if(qualVns.length === 0){
+        hhName = _buildHouseholdName(v);
+      } else {
+        const lastNames = [...new Set(qualVns.map(p=>p.last.toUpperCase()).filter(Boolean))];
+        if(lastNames.length === 1 && lastNames[0]){
+          hhName = qualVns.map(p=>p.first).join(' & ') + ' ' + qualVns[0].last;
+        } else {
+          hhName = qualVns.map(p=>`${p.first} ${p.last}`.trim()).join(' & ');
+        }
+      }
+
       const dataIdx = _labelData.length;
       _labelData.push({ v, first: hhName, last: '', age: null, presOnly: false });
       labelCards.push(
@@ -6705,9 +6743,14 @@ async function generateRoutes(){
   await geocodeAll(voters);
   // Separate mail-only households (assisted living/dorms) before clustering
   const _isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
-  // Exclude mailOnly households with no lot number AND many members
+  // Exclude mailOnly households with no lot number AND many members (hh > 4)
   // These are catch-all park addresses where residents didn't register with a lot — undeliverable
-  const _isUndeliverable = v => v.mailOnly && !_isLotAddr(v) && (v.hh || 1) > 4;
+  const _isUndeliverable = v => {
+    if(!v.mailOnly) return false;
+    if(_isLotAddr(v)) return false;  // has a lot number — deliverable
+    const hhSize = parseInt(v.hh) || (v.vns ? (Array.isArray(v.vns) ? v.vns.length : 0) : 0) || (v.voters ? v.voters.length : 0) || 1;
+    return hhSize > 4;
+  };
   const _mailOnlyVoters = voters.filter(v => (v.mailOnly || _isLotAddr(v)) && !_isUndeliverable(v));
   const _doorVoters = voters.filter(v => !v.mailOnly && !_isLotAddr(v));
   const res=clusterVoters(_doorVoters);
