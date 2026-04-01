@@ -3053,8 +3053,17 @@ function isRepPrimaryOnly(v){
 
 // Score an individual member within a household
 // presOnly = true means they only vote in presidential elections (lower engagement)
-function autoScoreIndividual(party, voting, lastPrimary, specialsVoted, donations, presOnly){
-  const baseScore = autoScore(party, voting, lastPrimary, specialsVoted, donations);
+// Score an individual member
+// vn = vns array entry: [firstName, lastName, age, presOnly, party?, lastPrimary?, voteCount?]
+function autoScoreIndividual(party, voting, lastPrimary, specialsVoted, donations, presOnly, vnEntry){
+  // Use individual party/lastPrimary from vns if available (index 4,5,6)
+  let indParty = party, indLastPrimary = lastPrimary, indVoting = voting;
+  if(Array.isArray(vnEntry) && vnEntry.length >= 5){
+    if(vnEntry[4]) indParty = vnEntry[4];
+    if(vnEntry[5] !== undefined) indLastPrimary = vnEntry[5];
+    if(vnEntry[6] !== undefined) indVoting = String(vnEntry[6]);
+  }
+  const baseScore = autoScore(indParty, indVoting, indLastPrimary, specialsVoted, donations);
   // Demote presOnly voters one level (strong→leans, leans→unknown)
   if(presOnly){
     if(baseScore === 'strong') return 'leans';
@@ -3284,7 +3293,7 @@ function clusterVoters(vl){
     return members.some(vn => {
       const presOnly = Array.isArray(vn) ? (vn[3] || false) : (vn && vn.presOnly) || false;
       const s = v.scoreOverride && v.score ? v.score
-        : autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+        : autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly, Array.isArray(vn) ? vn : null);
       if(_doorScores.has('strong') && s === 'strong') return true;
       if(_doorScores.has('leans')  && s === 'leans')  return true;
       if(_doorScores.has('unknown') && s !== 'strong' && s !== 'leans') return true;
@@ -5360,7 +5369,7 @@ function showMailLabelsOverlay(voterList){
       if(_mqScore && _mqScore !== 'all' && members.length > 0){
         qualifyingMembers = members.filter(m => {
           const presOnly = Array.isArray(m) ? (m[3]||false) : (m&&m.presOnly)||false;
-          const s = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+          const s = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly, Array.isArray(m) ? m : null);
           if(_mqScore === 'strong') return s === 'strong';
           if(_mqScore === 'leans')  return s === 'leans';
           if(_mqScore === 'leansstrong') return s === 'strong' || s === 'leans';
@@ -5482,7 +5491,7 @@ function showLabelHistory(dataIdx){
           a = vn.age; po = vn.presOnly;
         }
         const isThis = fn===first && ln===last;
-        const memberScore = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, po);
+        const memberScore = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, po, Array.isArray(vn) ? vn : null);
         const msColor = memberScore==='strong'?'var(--strong)':memberScore==='leans'?'var(--leans)':'var(--text-muted)';
         const msLabel = memberScore==='strong'?'★':memberScore==='leans'?'~':'?';
         return `<div style="padding:5px 0;border-bottom:1px solid var(--border);${isThis?'background:var(--accent-bg);border-radius:4px;padding:5px 6px;':''}">

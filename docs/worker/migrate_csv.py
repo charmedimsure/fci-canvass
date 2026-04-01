@@ -265,7 +265,32 @@ def build_voter_record(hh_key, members):
             if val and val not in ('', '0', 'N', 'NO'):
                 member_years.add(yr)
         pres_only = bool(member_years) and all(y in PRES_YEARS for y in member_years)
-        vns.append([fn, ln, age, pres_only])
+
+        # Individual party and last primary for per-member scoring
+        member_party = str(row.get('PARTYAFFIL', '') or row.get('PARTY_AFFILIATION', '')).strip().upper()
+        # Find this member's last primary
+        member_last_primary = ''
+        primary_cols_sorted = sorted(
+            [(col, yr) for (col, yr) in election_cols if 'PRIM' in col.upper() or 'PRIMARY' in col.upper()],
+            key=lambda x: x[1], reverse=True
+        )
+        for (col, yr) in primary_cols_sorted:
+            val = str(row.get(col, '') or '').strip().upper()
+            if val and val not in ('', '0', 'N', 'NO'):
+                if 'D' in val:
+                    member_last_primary = 'D'
+                elif 'R' in val:
+                    member_last_primary = 'R'
+                else:
+                    member_last_primary = 'D'
+                break
+
+        # Individual vote count
+        member_vote_count = sum(1 for (col, yr) in election_cols
+            if str(row.get(col,'') or '').strip() not in ('','0','N','NO'))
+
+        # vns format: [firstName, lastName, age, presOnly, party, lastPrimary, voteCount]
+        vns.append([fn, ln, age, pres_only, member_party, member_last_primary, member_vote_count])
 
     # Ages string
     ages_list = []

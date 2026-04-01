@@ -11,17 +11,95 @@ function _show(id,d){ var e=_el(id); if(e)e.style.display=d||'flex'; }
 // Stub for getVoterEdit — replaced by full implementation in main script
 if(typeof getVoterEdit === 'undefined') window.getVoterEdit = function(id){ try{ return JSON.parse(localStorage.getItem('fci_voter_edits')||'{}')[id]||{}; }catch(e){ return {}; } };
 // Stub for doAuthLogin
-if(typeof doAuthLogin === 'undefined') window.doAuthLogin = function(){ if(typeof window._realDoAuthLogin==='function') window._realDoAuthLogin(); };
+window._doAuthLoginStub = function(){ if(window._realDoAuthLogin && window._realDoAuthLogin !== window._doAuthLoginStub) window._realDoAuthLogin(); };
+if(typeof doAuthLogin === 'undefined') window.doAuthLogin = window._doAuthLoginStub;
 function _hide(id){ var e=_el(id); if(e)e.style.display='none'; }
 
 // Overlay openers
 function openVoterLookup(){ _show('voter-lookup-overlay'); setTimeout(function(){var e=_el('vlookup-last');if(e)e.focus();},100); }
 function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
-function showAdminLoginFromFront(){ var s=_el('auth-login-subtitle'); if(s)s.textContent='Sign in to admin or campaign account'; _el('auth-email').value=''; _el('auth-password').value=''; _el('auth-login-err').style.display='none'; _show('auth-login-overlay'); setTimeout(function(){_el('auth-email').focus();},100); }
-function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-overlay'); }
-function showAuthRegister(){ _hide('auth-login-overlay'); _show('auth-register-overlay'); }
+function showAdminLoginFromFront(){ openCandidatePanel(); }
+function closeAuthLogin(){ _hide('auth-login-overlay'); _hide('auth-register-overlay'); _hide('cand-login-overlay'); }
+function showAuthRegister(){ openCandidatePanel(); } // Route to candidate panel
 function closeVoterLookup(){ _hide('voter-lookup-overlay'); }
 function closeAdminDash(){ _hide('admin-dash-overlay'); }
+
+// ── CENTRAL COMMITTEE CANVASSING ────────────────────────────────────────────
+function ccRenderList(filter){
+  const list = document.getElementById('cc-seat-list');
+  if(!list) return;
+  const seats = filter === 'vacant' ? CC_SEATS.filter(s=>s.vacant)
+              : filter === 'filled' ? CC_SEATS.filter(s=>!s.vacant)
+              : CC_SEATS;
+  list.innerHTML = seats.map(s => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:700;color:var(--text);">${s.precinct}</div>
+        <div style="font-size:11px;color:${s.vacant?'var(--danger)':'var(--strong)'};">${s.vacant?'⚠️ VACANT':'✓ '+s.member}</div>
+      </div>
+      <button onclick="ccCanvassPrec('${s.normalized}','${s.precinct.replace(/'/,"\'")}',${s.vacant})"
+        style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;">
+        📬 Canvass
+      </button>
+    </div>`).join('');
+}
+function ccShowAll()    { ccRenderList('all');    }
+function ccShowVacant() { ccRenderList('vacant'); }
+function ccShowFilled() { ccRenderList('filled'); }
+
+async function ccCanvassPrec(normalizedPrec, displayPrec, isVacant){
+  // Close admin dash, set up mail canvass for this precinct's strong Dems
+  closeAdminDash();
+  toast(`Loading strong Dems in ${displayPrec}…`);
+
+  // Fetch voters for this precinct
+  showLoadingOverlay(`Loading voters in ${displayPrec}…`);
+  try {
+    const r = await apiGet('/api/voters', { county_num: '23', limit: 5000 });
+    const all = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter);
+    // Filter to this precinct
+    const precVoters = all.filter(v => {
+      const vPrec = (v.precinctName || '').toUpperCase();
+      return vPrec === normalizedPrec.toUpperCase();
+    });
+
+    if(!precVoters.length){
+      hideLoadingOverlay();
+      toast('No voters found for ' + displayPrec, true);
+      return;
+    }
+
+    // Score each voter, keep strong + leans
+    precVoters.forEach(v => {
+      if(!v.score) v.score = autoScore(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations);
+    });
+    const targets = precVoters.filter(v => v.score === 'strong' || v.score === 'leans');
+
+    hideLoadingOverlay();
+
+    const vacantMsg = isVacant ? '⚠️ This seat is VACANT — ask if they\'d like to run!' : '';
+    if(!targets.length){
+      toast('No strong/leans Dems found in ' + displayPrec, true);
+      return;
+    }
+
+    // Show mail qty picker for these voters
+    canvassMode = 'mail';
+    canvassFor = 'Central Committee — ' + displayPrec;
+    filterField = 'precinctName';
+    filterDistrict = normalizedPrec;
+    ALL_VOTERS_RAW = all;
+    voters = precVoters;
+    mailList = targets;
+    showScreen('results');
+    switchTab('mail');
+    showMailQtyPicker(targets);
+    if(vacantMsg) setTimeout(()=>toast(vacantMsg), 800);
+  } catch(e) {
+    hideLoadingOverlay();
+    toast('Error loading voters: ' + e.message, true);
+  }
+}
 function closeCandidateDash(){ _hide('cand-dash-overlay'); }
 function closeCandidateLogin(){ _hide('cand-login-overlay'); }
 function closeAllPopups(){ ['modal-overlay','walk-sheet-overlay','mail-labels-overlay','mail-qty-overlay','scan-overlay','sheet-review-overlay','voter-lookup-overlay','auth-login-overlay','auth-register-overlay'].forEach(_hide); }
@@ -267,7 +345,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   }
   html, body { height: 100%; font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); transition: background .25s, color .25s; }
 
-  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:7000; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; min-height:50px; background:var(--header-bg); border-bottom:1px solid var(--header-border); position:sticky; top:0; z-index:7000; width:100%; box-sizing:border-box; }
 .scroll-under-header { padding-top: 100px !important; }
   .logo { display:flex; align-items:center; }
   .logo-dark  { display: none; }
@@ -564,7 +642,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .mf-btn-skip { background:var(--surface2); color:var(--text-muted); }
   .mf-btn-apply { background:var(--fci-sky); color:#000; }
   /* Focused route overlay — full screen, same pattern as route-picker */
-  #focused-route-overlay { position:fixed; inset:0; background:var(--bg); z-index:2500; display:none; flex-direction:column; overflow:hidden; }
+  #focused-route-overlay { position:fixed; inset:0; background:var(--bg); z-index:8000; display:none; flex-direction:column; overflow:hidden; }
   #focused-route-overlay.open { display:flex; }
   .fro-header { display:flex; align-items:center; gap:8px; padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
   .fro-btn-row { display:flex; gap:6px; flex-wrap:wrap; width:100%; margin-top:4px; }
@@ -575,7 +653,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .fro-tab { flex:1; padding:10px; background:none; border:none; color:var(--text-muted); font-size:13px; font-weight:500; cursor:pointer; font-family:inherit; border-bottom:2px solid transparent; }
   .fro-tab.active { color:var(--fci-sky); border-bottom-color:var(--fci-red); background:var(--bg); }
   .fro-body { flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:100px 0 80px; }
-    #route-picker { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:3000; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding:24px 16px 80px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    #route-picker { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:3000; display:none; flex-direction:column; align-items:center; justify-content:flex-start; padding:80px 16px 80px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
   #route-picker.open { display:flex; }
   /* Mail labels overlay */
   #mail-labels-overlay { position:fixed; inset:0; background:var(--bg); z-index:8000; display:none; flex-direction:column; }
@@ -1326,6 +1404,16 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 
       <!-- GENERATE -->
       <div id="step-generate" style="display:none;">
+        <!-- Door-to-door score filter (hidden for mail mode) -->
+        <div id="door-score-filter" style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Include which voters?</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button class="door-score-btn selected" data-dscore="strong" onclick="toggleDoorScore(this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">★ Strong</button>
+            <button class="door-score-btn selected" data-dscore="leans" onclick="toggleDoorScore(this)" style="background:var(--fci-sky);border:1.5px solid var(--fci-sky);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">~ Leans</button>
+            <button class="door-score-btn" data-dscore="unknown" onclick="toggleDoorScore(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">? Unknown</button>
+          </div>
+          <div id="door-unknown-warning" style="display:none;font-size:11px;color:#f59e0b;margin-top:8px;padding:6px 10px;background:rgba(245,158,11,.1);border-radius:6px;border:1px solid rgba(245,158,11,.3);">⚠️ Including unknown voters may result in longer walks — they're spread across the full area.</div>
+        </div>
         <button id="generate-btn" onclick="canvassMode==='mail'?_openSimpleMailFilter():generateRoutes()" style="width:100%;background:var(--fci-red);color:#fff;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;text-transform:uppercase;">
           Generate Routes →
         </button>
@@ -1421,7 +1509,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div class="mlo-sub" id="mlo-sub">0 voters</div>
     </div>
     <button onclick="printMailLabels()" style="background:var(--fci-red);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0;white-space:nowrap;">🖨 Print Labels</button>
-    <button onclick="document.getElementById('mail-labels-overlay').classList.remove('open');document.getElementById('mlo-history-panel').style.display='none';" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✕ Close</button>
+    <button onclick="doneMailLabels()" style="background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:7px;padding:9px 14px;font-size:12px;cursor:pointer;font-family:inherit;flex-shrink:0;">✓ Done</button>
   </div>
   <div style="display:flex;flex:1;overflow:hidden;">
     <div class="mlo-body" id="mlo-body" style="flex:1;"></div>
@@ -1436,8 +1524,21 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   </div>
 </div>
 
+<!-- MAIL CONTACTED CONFIRMATION OVERLAY -->
+<div id="mail-contacted-overlay" style="display:none;position:fixed;inset:0;z-index:9200;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,400px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
+    <div style="font-size:20px;margin-bottom:8px;">✉️ Count as Contacted?</div>
+    <div style="font-size:14px;color:var(--text);margin-bottom:8px;font-weight:600;">Do you want to count these labels as contacted?</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:24px;">Marking them contacted removes them from future mail pulls so the same households aren't contacted twice.</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="mailContactedConfirm(false)" style="flex:1;background:none;border:1px solid var(--border);color:var(--text-muted);border-radius:9px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Skip</button>
+      <button onclick="mailContactedConfirm(true)" style="flex:2;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;border-radius:9px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">✅ Yes, Count as Contacted</button>
+    </div>
+  </div>
+</div>
+
 <!-- MAIL QUANTITY PICKER OVERLAY -->
-<div id="mail-qty-overlay" style="display:none;position:fixed;inset:0;z-index:3600;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+<div id="mail-qty-overlay" style="display:none;position:fixed;inset:0;z-index:8600;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:min(94vw,420px);box-shadow:0 12px 40px rgba(0,0,0,.4);">
     <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;">📬 How many postcards?</div>
     <div id="mq-sub" style="font-size:13px;color:var(--text-muted);margin-bottom:22px;line-height:1.5;"></div>
@@ -1875,6 +1976,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">⚙️ Admin — Edit Voter Record</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Name Override</label>
+          <input id="m-admin-name" type="text" placeholder="First Last"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
+        <div>
           <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Phone Number</label>
           <input id="m-admin-phone" type="tel" placeholder="(614) 555-0100"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
@@ -1884,9 +1990,40 @@ return{data:data,meta:{fields:hdrs}};}};</script>
           <input id="m-admin-email" type="email" placeholder="voter@email.com"
             style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
         </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Mailing Address Override</label>
+          <input id="m-admin-address" type="text" placeholder="123 MAIN ST, LANCASTER 43130"
+            style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:8px 10px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+        </div>
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;">
           <input type="checkbox" id="m-admin-exclude" style="width:15px;height:15px;accent-color:var(--danger);">
           <label for="m-admin-exclude" style="font-size:13px;color:var(--danger);font-weight:600;cursor:pointer;">Exclude from all lists permanently</label>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">🗺 Correct District Assignment</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">OH House</label>
+              <input id="m-admin-st-house" type="text" placeholder="e.g. 73"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">OH Senate</label>
+              <input id="m-admin-st-senate" type="text" placeholder="e.g. 20"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Congress</label>
+              <input id="m-admin-cong-dist" type="text" placeholder="e.g. 12"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">County #</label>
+              <input id="m-admin-county-num" type="text" placeholder="e.g. 23"
+                style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:7px 9px;border-radius:7px;outline:none;box-sizing:border-box;font-family:inherit;">
+            </div>
+          </div>
+          <button onclick="saveAdminDistrictFix()" style="width:100%;background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:12px;font-weight:700;padding:8px;border-radius:7px;cursor:pointer;font-family:inherit;margin-top:8px;">💾 Save District Fix</button>
         </div>
       </div>
       <button onclick="saveAdminVoterEdits()" style="width:100%;background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;margin-top:8px;">Save Admin Changes →</button>
@@ -2071,12 +2208,17 @@ function hideLoadingOverlay(){
 }
 
 
+const CC_SEATS = [{"precinct": "Amanda A", "normalized": "AMANDA A", "member": "VACANT", "vacant": true}, {"precinct": "Amanda B", "normalized": "AMANDA B", "member": "VACANT", "vacant": true}, {"precinct": "Baltimore A", "normalized": "BALTIMORE VILLAGE A", "member": "VACANT", "vacant": true}, {"precinct": "Baltimore B", "normalized": "BALTIMORE VILLAGE B", "member": "Michael Lieber", "vacant": false}, {"precinct": "Berne A", "normalized": "BERNE A", "member": "VACANT", "vacant": true}, {"precinct": "Berne B", "normalized": "BERNE B", "member": "VACANT", "vacant": true}, {"precinct": "Berne C", "normalized": "BERNE C", "member": "VACANT", "vacant": true}, {"precinct": "Berne D", "normalized": "BERNE D", "member": "Michael K. Oatney", "vacant": false}, {"precinct": "Bloom A", "normalized": "BLOOM A", "member": "Tyler Shahan", "vacant": false}, {"precinct": "Bloom B", "normalized": "BLOOM B", "member": "Reed M. Bailey", "vacant": false}, {"precinct": "Bloom C", "normalized": "BLOOM C", "member": "VACANT", "vacant": true}, {"precinct": "Bloom D", "normalized": "BLOOM D", "member": "Casey Belli", "vacant": false}, {"precinct": "Bloom E", "normalized": "BLOOM E", "member": "Paul R. Johnson", "vacant": false}, {"precinct": "Bremen Village", "normalized": "BREMEN VILLAGE", "member": "Mary F. Kunkler", "vacant": false}, {"precinct": "Clearcreek A", "normalized": "CLEARCREEK A", "member": "Amy L. Morris", "vacant": false}, {"precinct": "Clearcreek B", "normalized": "CLEARCREEK B", "member": "Amy Rigsby", "vacant": false}, {"precinct": "Columbus A", "normalized": "COLUMBUS CITY A", "member": "VACANT", "vacant": true}, {"precinct": "Columbus B", "normalized": "COLUMBUS CITY B", "member": "VACANT", "vacant": true}, {"precinct": "Columbus C", "normalized": "COLUMBUS CITY C", "member": "VACANT", "vacant": true}, {"precinct": "Columbus D", "normalized": "COLUMBUS CITY D", "member": "VACANT", "vacant": true}, {"precinct": "Columbus E", "normalized": "COLUMBUS CITY E", "member": "Nancy T. Ashley", "vacant": false}, {"precinct": "Columbus F", "normalized": "COLUMBUS CITY F", "member": "Caroline Kreis", "vacant": false}, {"precinct": "Greenfield A", "normalized": "GREENFIELD A", "member": "VACANT", "vacant": true}, {"precinct": "Greenfield B", "normalized": "GREENFIELD B", "member": "Michael Scarmack", "vacant": false}, {"precinct": "Greenfield C", "normalized": "GREENFIELD C", "member": "Jeff Tipple", "vacant": false}, {"precinct": "Greenfield D", "normalized": "GREENFIELD D", "member": "Jeff Kraner", "vacant": false}, {"precinct": "Hocking A", "normalized": "HOCKING A", "member": "VACANT", "vacant": true}, {"precinct": "Hocking B", "normalized": "HOCKING B", "member": "Robert Williams", "vacant": false}, {"precinct": "Hocking C", "normalized": "HOCKING C", "member": "Leah Hackleman-Good", "vacant": false}, {"precinct": "Lancaster 1-A", "normalized": "LANCASTER CITY 1-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 1-B", "normalized": "LANCASTER CITY 1-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 1-C", "normalized": "LANCASTER CITY 1-C", "member": "Allison A. Appel", "vacant": false}, {"precinct": "Lancaster 1-D", "normalized": "LANCASTER CITY 1-D", "member": "Nancy McAtee", "vacant": false}, {"precinct": "Lancaster 1-E", "normalized": "LANCASTER CITY 1-E", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 2-A", "normalized": "LANCASTER CITY 2-A", "member": "Ryan Weaver", "vacant": false}, {"precinct": "Lancaster 2-B", "normalized": "LANCASTER CITY 2-B", "member": "Jay A. Mattlin", "vacant": false}, {"precinct": "Lancaster 2-C", "normalized": "LANCASTER CITY 2-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 2-D", "normalized": "LANCASTER CITY 2-D", "member": "Howard Blaisdell", "vacant": false}, {"precinct": "Lancaster 3-A", "normalized": "LANCASTER CITY 3-A", "member": "Kenneth D. Culver", "vacant": false}, {"precinct": "Lancaster 3-B", "normalized": "LANCASTER CITY 3-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 3-C", "normalized": "LANCASTER CITY 3-C", "member": "Neil C. Riggs", "vacant": false}, {"precinct": "Lancaster 3-D", "normalized": "LANCASTER CITY 3-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 3-E", "normalized": "LANCASTER CITY 3-E", "member": "Cary J. Brown", "vacant": false}, {"precinct": "Lancaster 4-A", "normalized": "LANCASTER CITY 4-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 4-B", "normalized": "LANCASTER CITY 4-B", "member": "Debra A. Turner", "vacant": false}, {"precinct": "Lancaster 4-C", "normalized": "LANCASTER CITY 4-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 4-D", "normalized": "LANCASTER CITY 4-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 5-A", "normalized": "LANCASTER CITY 5-A", "member": "Bryan Everitt", "vacant": false}, {"precinct": "Lancaster 5-B", "normalized": "LANCASTER CITY 5-B", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 5-C", "normalized": "LANCASTER CITY 5-C", "member": "Lisa Rosser", "vacant": false}, {"precinct": "Lancaster 5-D", "normalized": "LANCASTER CITY 5-D", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-A", "normalized": "LANCASTER CITY 6-A", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-B", "normalized": "LANCASTER CITY 6-B", "member": "Aimee Aldridge", "vacant": false}, {"precinct": "Lancaster 6-C", "normalized": "LANCASTER CITY 6-C", "member": "VACANT", "vacant": true}, {"precinct": "Lancaster 6-D", "normalized": "LANCASTER CITY 6-D", "member": "VACANT", "vacant": true}, {"precinct": "Liberty A", "normalized": "LIBERTY A", "member": "VACANT", "vacant": true}, {"precinct": "Liberty B", "normalized": "LIBERTY B", "member": "VACANT", "vacant": true}, {"precinct": "Liberty C", "normalized": "LIBERTY C", "member": "VACANT", "vacant": true}, {"precinct": "Liberty D", "normalized": "LIBERTY D", "member": "VACANT", "vacant": true}, {"precinct": "Lithopolis A", "normalized": "LITHOPOLIS VILLAGE A", "member": "VACANT", "vacant": true}, {"precinct": "Lithopolis B", "normalized": "LITHOPOLIS VILLAGE B", "member": "Amber Daniels", "vacant": false}, {"precinct": "Madison A", "normalized": "MADISON A", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington A", "normalized": "PICKERINGTON CITY A", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington B", "normalized": "PICKERINGTON CITY B", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington C", "normalized": "PICKERINGTON CITY C", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington D", "normalized": "PICKERINGTON CITY D", "member": "Chris Potelicki", "vacant": false}, {"precinct": "Pickerington E", "normalized": "PICKERINGTON CITY E", "member": "David Gellert", "vacant": false}, {"precinct": "Pickerington F", "normalized": "PICKERINGTON CITY F", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington G", "normalized": "PICKERINGTON CITY G", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington H", "normalized": "PICKERINGTON CITY H", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington I", "normalized": "PICKERINGTON CITY I", "member": "Tony Barletta", "vacant": false}, {"precinct": "Pickerington J", "normalized": "PICKERINGTON CITY J", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington K", "normalized": "PICKERINGTON CITY K", "member": "Charles E. Newman", "vacant": false}, {"precinct": "Pickerington L", "normalized": "PICKERINGTON CITY L", "member": "Lazaro Fuentes", "vacant": false}, {"precinct": "Pickerington M", "normalized": "PICKERINGTON CITY M", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington N", "normalized": "PICKERINGTON CITY N", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington O", "normalized": "PICKERINGTON CITY O", "member": "VACANT", "vacant": true}, {"precinct": "Pickerington P", "normalized": "PICKERINGTON CITY P", "member": "Adrienne M. Bowden", "vacant": false}, {"precinct": "Pickerington Q", "normalized": "PICKERINGTON CITY Q", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant A", "normalized": "PLEASANT A", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant B", "normalized": "PLEASANT B", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant C", "normalized": "PLEASANT C", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant D", "normalized": "PLEASANT D", "member": "VACANT", "vacant": true}, {"precinct": "Pleasant E", "normalized": "PLEASANT E", "member": "David C. Comer", "vacant": false}, {"precinct": "Pleasant F", "normalized": "PLEASANT F", "member": "VACANT", "vacant": true}, {"precinct": "Richland East", "normalized": "RICHLAND EAST", "member": "Rachel McCandlish", "vacant": false}, {"precinct": "Richland West", "normalized": "RICHLAND WEST", "member": "David Arthur Bugh II", "vacant": false}, {"precinct": "Rushcreek A", "normalized": "RUSHCREEK A", "member": "VACANT", "vacant": true}, {"precinct": "Rushcreek B", "normalized": "RUSHCREEK B", "member": "VACANT", "vacant": true}, {"precinct": "Violet A", "normalized": "VIOLET A", "member": "Jennifer Lynn Lewis", "vacant": false}, {"precinct": "Violet B", "normalized": "VIOLET B", "member": "Darren Meade", "vacant": false}, {"precinct": "Violet C", "normalized": "VIOLET C", "member": "VACANT", "vacant": true}, {"precinct": "Violet D", "normalized": "VIOLET D", "member": "Michele Ward-Tackett", "vacant": false}, {"precinct": "Violet E", "normalized": "VIOLET E", "member": "VACANT", "vacant": true}, {"precinct": "Violet F", "normalized": "VIOLET F", "member": "Willie J. Pinkins", "vacant": false}, {"precinct": "Violet G", "normalized": "VIOLET G", "member": "Etha C. Brown", "vacant": false}, {"precinct": "Violet H", "normalized": "VIOLET H", "member": "VACANT", "vacant": true}, {"precinct": "Violet I", "normalized": "VIOLET I", "member": "Karen Sottosanti", "vacant": false}, {"precinct": "Violet J", "normalized": "VIOLET J", "member": "VACANT", "vacant": true}, {"precinct": "Violet K", "normalized": "VIOLET K", "member": "Samantha Low", "vacant": false}, {"precinct": "Violet L", "normalized": "VIOLET L", "member": "VACANT", "vacant": true}, {"precinct": "Violet M", "normalized": "VIOLET M", "member": "VACANT", "vacant": true}, {"precinct": "Violet N", "normalized": "VIOLET N", "member": "Brett Riffle", "vacant": false}, {"precinct": "Violet O", "normalized": "VIOLET O", "member": "Brett Pransky", "vacant": false}, {"precinct": "Violet P", "normalized": "VIOLET P", "member": "Jeremy A. VanMeter", "vacant": false}, {"precinct": "Violet Q", "normalized": "VIOLET Q", "member": "Jean Marie Parker", "vacant": false}, {"precinct": "Violet R", "normalized": "VIOLET R", "member": "VACANT", "vacant": true}, {"precinct": "Walnut A", "normalized": "WALNUT A", "member": "Faye Whitaker", "vacant": false}, {"precinct": "Walnut B", "normalized": "WALNUT B", "member": "VACANT", "vacant": true}, {"precinct": "Walnut C", "normalized": "WALNUT C", "member": "VACANT", "vacant": true}, {"precinct": "Walnut D", "normalized": "WALNUT D", "member": "James Kinniard", "vacant": false}];
 const FIELD_LOOKUP={"cong":{"0":"12TH CONGRESSIONAL"},"sen":{"0":"OHIO STATE SENATE 20"},"hou":{"0":"OHIO ST HOUSE REP 69","1":"OHIO ST HOUSE REP 73"},"precn":{"0":"AMANDA A","1":"AMANDA B","2":"BALTIMORE VILLAGE A","3":"BALTIMORE VILLAGE B","4":"BERNE A","5":"BERNE B","6":"BERNE C","7":"BERNE D","8":"BLOOM A","9":"BLOOM B","10":"BLOOM C","11":"BLOOM D","12":"BLOOM E","13":"BREMEN VILLAGE","14":"CLEARCREEK A","15":"CLEARCREEK B","16":"COLUMBUS CITY A","17":"COLUMBUS CITY B","18":"COLUMBUS CITY C","19":"COLUMBUS CITY D","20":"COLUMBUS CITY E","21":"COLUMBUS CITY F","22":"GREENFIELD A","23":"GREENFIELD B","24":"GREENFIELD C","25":"GREENFIELD D","26":"HOCKING A","27":"HOCKING B","28":"HOCKING C","29":"LANCASTER CITY 1-A","30":"LANCASTER CITY 1-B","31":"LANCASTER CITY 1-C","32":"LANCASTER CITY 1-D","33":"LANCASTER CITY 1-E","34":"LANCASTER CITY 2-A","35":"LANCASTER CITY 2-B","36":"LANCASTER CITY 2-C","37":"LANCASTER CITY 2-D","38":"LANCASTER CITY 3-A","39":"LANCASTER CITY 3-B","40":"LANCASTER CITY 3-C","41":"LANCASTER CITY 3-D","42":"LANCASTER CITY 3-E","43":"LANCASTER CITY 4-A","44":"LANCASTER CITY 4-B","45":"LANCASTER CITY 4-C","46":"LANCASTER CITY 4-D","47":"LANCASTER CITY 5-A","48":"LANCASTER CITY 5-B","49":"LANCASTER CITY 5-C","50":"LANCASTER CITY 5-D","51":"LANCASTER CITY 6-A","52":"LANCASTER CITY 6-B","53":"LANCASTER CITY 6-C","54":"LANCASTER CITY 6-D","55":"LIBERTY A","56":"LIBERTY B","57":"LIBERTY C","58":"LIBERTY D","59":"LITHOPOLIS VILLAGE A","60":"LITHOPOLIS VILLAGE B","61":"MADISON A","62":"PICKERINGTON CITY A","63":"PICKERINGTON CITY B","64":"PICKERINGTON CITY C","65":"PICKERINGTON CITY D","66":"PICKERINGTON CITY E","67":"PICKERINGTON CITY F","68":"PICKERINGTON CITY G","69":"PICKERINGTON CITY H","70":"PICKERINGTON CITY I","71":"PICKERINGTON CITY J","72":"PICKERINGTON CITY K","73":"PICKERINGTON CITY L","74":"PICKERINGTON CITY M","75":"PICKERINGTON CITY N","76":"PICKERINGTON CITY O","77":"PICKERINGTON CITY P","78":"PICKERINGTON CITY Q","79":"PLEASANT A","80":"PLEASANT B","81":"PLEASANT C","82":"PLEASANT D","83":"PLEASANT E","84":"PLEASANT F","85":"RICHLAND EAST","86":"RICHLAND WEST","87":"RUSHCREEK A","88":"RUSHCREEK B","89":"VIOLET A","90":"VIOLET B","91":"VIOLET C","92":"VIOLET D","93":"VIOLET E","94":"VIOLET F","95":"VIOLET G","96":"VIOLET H","97":"VIOLET I","98":"VIOLET J","99":"VIOLET K","100":"VIOLET L","101":"VIOLET M","102":"VIOLET N","103":"VIOLET O","104":"VIOLET P","105":"VIOLET Q","106":"VIOLET R","107":"WALNUT A","108":"WALNUT B","109":"WALNUT C","110":"WALNUT D"},"sch":{"0":"AMANDA-CLEARCRK LSD","1":"BERNE UNION LSD","2":"BLOOM-CARROLL LSD","3":"CANAL WINCHESTER LSD","4":"FAIRFIELD UNION LSD","5":"LANCASTER CSD","6":"LIBERTY UNION LSD","7":"PICKERINGTON LSD","8":"SW LICKING LSD","9":"WALNUT TOWNSHIP LSD"},"city":{"0":"COLUMBUS CITY","1":"LANCASTER CITY","2":"PICKERINGTON CITY","3":"REYNOLDSBURG CITY"},"twp":{"0":"AMANDA TWP","1":"BERNE TWP","2":"BLOOM TWP","3":"CLEARCREEK TWP","4":"GREENFIELD TWP","5":"HOCKING TWP","6":"LIBERTY TWP","7":"MADISON TWP","8":"MONTGOMERY TWP","9":"PLEASANT TWP","10":"RICHLAND TWP","11":"RUSHCREEK TWP","12":"VIOLET TWP","13":"WALNUT TWP"},"vil":{"0":"BALTIMORE VLG","1":"BREMEN VLG","2":"CARROLL VLG","3":"LITHOPOLIS VLG","4":"RUSHVILLE VLG"},"prec":{"0":"01AA  1","1":"01AA  2","2":"01AB  1","3":"01AB  2","4":"01AB  3","5":"02BA  1","6":"02BB  1","7":"03BA  1","8":"03BA  2","9":"03BA  3","10":"03BB  1","11":"03BC  1","12":"03BD  1","13":"03BD  2","14":"04BA  1","15":"04BA  2","16":"04BA  3","17":"04BB  1","18":"04BB  2","19":"04BC  1","20":"04BC  2","21":"04BD  1","22":"04BD  2","23":"04BE  1","24":"04BE  2","25":"05BV  1","26":"06CA  1","27":"06CA  2","28":"06CB  1","29":"07CA  1","30":"07CB  1","31":"07CC  1","32":"07CD  1","33":"07CE  1","34":"07CF  1","35":"08GA  1","36":"08GA  2","37":"08GA  3","38":"08GA  4","39":"08GB  1","40":"08GB  2","41":"08GC  1","42":"08GC  2","43":"08GD  1","44":"08GD  2","45":"09HA  1","46":"09HA  2","47":"09HB  1","48":"09HC  1","49":"09HC  2","50":"101A  1","51":"101B  1","52":"101C  1","53":"101D  1","54":"101E  1","55":"101E  2","56":"102A  1","57":"102B  1","58":"102C  1","59":"102D  1","60":"103A  1","61":"103B  1","62":"103C  1","63":"103D  1","64":"103E  1","65":"104A  1","66":"104B  1","67":"104C  1","68":"104D  1","69":"105A  1","70":"105B  1","71":"105C  2","72":"105D  1","73":"105D  2","74":"106A  1","75":"106B  1","76":"106C  1","77":"106D  1","78":"11LA  1","79":"11LA  2","80":"11LA  3","81":"11LA  4","82":"11LB  1","83":"11LB  2","84":"11LC  1","85":"11LC  2","86":"11LC  3","87":"11LC  4","88":"11LD  1","89":"11LD  2","90":"12LA  1","91":"12LA  2","92":"12LA  3","93":"12LB  1","94":"13MA  1","95":"13MA  2","96":"14PA  1","97":"14PB  1","98":"14PC  1","99":"14PD  1","100":"14PE  1","101":"14PF  1","102":"14PF  2","103":"14PG  1","104":"14PH  1","105":"14PI  1","106":"14PJ  1","107":"14PK  1","108":"14PL  1","109":"14PM  1","110":"14PN  1","111":"14PO  1","112":"14PP  1","113":"14PQ  1","114":"15PA  1","115":"15PA  2","116":"15PB  1","117":"15PB  2","118":"15PB  3","119":"15PC  1","120":"15PC  2","121":"15PD  1","122":"15PD  2","123":"15PE  1","124":"15PF  1","125":"16RE  1","126":"16RE  2","127":"16RW  1","128":"16RW  2","129":"17RA  1","130":"17RB  1","131":"18VA  1","132":"18VA  2","133":"18VA  3","134":"18VB  1","135":"18VB  2","136":"18VB  3","137":"18VC  1","138":"18VC  3","139":"18VC  4","140":"18VD  1","141":"18VD  2","142":"18VD  3","143":"18VD  4","144":"18VE  1","145":"18VF  1","146":"18VG  1","147":"18VH  1","148":"18VI  1","149":"18VJ  1","150":"18VK  1","151":"18VL  1","152":"18VM  1","153":"18VN  1","154":"18VO  1","155":"18VP  1","156":"18VQ  1","157":"18VR  1","158":"19WA  1","159":"19WA  2","160":"19WA  3","161":"19WA  4","162":"19WB  1","163":"19WB  2","164":"19WB  3","165":"19WC  1","166":"19WC  2","167":"19WD  1","168":"19WD  2","169":"19WD  3","170":"19WD  5"}};
 
 // ── Voter data via API ───────────────────────────────────────────
 let ALL_VOTERS_RAW = [];   // populated by loadVotersFromAPI()
 
 function voterFromAPI(v){
+  // Immediately exclude R donors and registered Republicans at the source
+  // so they can never appear anywhere in the app
+  if((v.party||v.pty||'').toUpperCase() === 'R') return null;
+  if(v.donations && v.donations.some(d => d.lean === 'R')) return null;
   // v comes from D1 — decode compressed field names to what the app expects
   // vns is stored as JSON string array of [firstName, lastName] pairs
   let vnsArr = [];
@@ -2140,22 +2282,22 @@ function _voterAPIParams(focusAreas){
   const params = {};
   const fa = focusAreas || {};
   const distMap = {
-    HD73:{field:'st_house',  value:'OHIO ST HOUSE REP 73'},
-    HD69:{field:'st_house',  value:'OHIO ST HOUSE REP 69'},
-    SD20:{field:'st_senate', value:'OHIO STATE SENATE 20'},
-    CD12:{field:'cong_dist', value:'12TH CONGRESSIONAL'},
+    HD73:{field:'stHouse',  value:'73'},
+    HD69:{field:'stHouse',  value:'69'},
+    SD20:{field:'stSenate', value:'20'},
+    CD12:{field:'congDist', value:'12'},
   };
-  // District fields are empty in D1 — never filter by district at DB level
-  // applyFilters handles client-side district filtering
-  // For mail mode, scope by county
+  // District fields now populated — filter at DB level
   if(canvassMode === 'mail'){
-    // HD-69 and CD-12 span multiple counties — fetch all, filter client-side
+    if(filterField === 'stHouse')  params.st_house  = filterDistrict;
+    if(filterField === 'stSenate') params.st_senate = filterDistrict;
+    if(filterField === 'congDist') params.cong_dist = filterDistrict;
+    // HD-69 and CD-12 span multiple counties — no county filter
     const crossCountyRaces = ['CD12', 'HD69'];
     const isCrossCounty = (fa.district && crossCountyRaces.includes(fa.district)) ||
                           (filterField === 'congDist') ||
                           (filterField === 'stHouse' && filterDistrict === '69');
     if(!isCrossCounty) params.county_num = '23';
-    // cross-county races: no county filter, applyFilters handles county selection
   } else if(fa.city && fa.city !== 'all'){
     params.municipality = fa.city.toUpperCase() + ' CITY';
   }
@@ -2167,7 +2309,7 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -2360,13 +2502,16 @@ async function selectArea(btn){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
+      // Door-to-door always scoped to Fairfield County regardless of race selected
+      fetchParams.county_num = '23';
       if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
-      // else: no area filter — fetch all voters (worker filters by party != R)
+      else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
+      else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -2575,6 +2720,8 @@ function selectRace(btn){
   canvassFor      = btn.dataset.race;
   filterField     = btn.dataset.field    || '';
   filterDistrict  = btn.dataset.district || '';
+  // Clear cached voters so mail re-fetches with correct district filter
+  ALL_VOTERS_RAW = [];
   wizCollapse('step-race','chip-race', canvassFor, 'change-race-btn');
   wizShow('step-generate');
   updateCanvassForPill();
@@ -2706,10 +2853,10 @@ function applyFilters(voterList){
 
   // Race / district filter
   if(filterField && filterDistrict){
-    const want = norm(filterDistrict);
+    const want = (filterDistrict||'').trim();
     list = list.filter(v => {
-      const val = norm(v[filterField] || '');
-      return val && (val === want || val.includes(want) || want.includes(val));
+      const val = (v[filterField] || '').trim();
+      return val && val === want;
     });
   }
 
@@ -2904,6 +3051,18 @@ function isRepPrimaryOnly(v){
   return false;
 }
 
+// Score an individual member within a household
+// presOnly = true means they only vote in presidential elections (lower engagement)
+function autoScoreIndividual(party, voting, lastPrimary, specialsVoted, donations, presOnly){
+  const baseScore = autoScore(party, voting, lastPrimary, specialsVoted, donations);
+  // Demote presOnly voters one level (strong→leans, leans→unknown)
+  if(presOnly){
+    if(baseScore === 'strong') return 'leans';
+    if(baseScore === 'leans')  return 'unknown';
+  }
+  return baseScore;
+}
+
 function autoScore(party, voting, lastPrimary, specialsVoted, donations){
   const isDem  = party === 'D';
   const isRep  = party === 'R';
@@ -2915,6 +3074,7 @@ function autoScore(party, voting, lastPrimary, specialsVoted, donations){
   if(donations && donations.length && donations.some(d => d.lean === 'D')) return 'strong';
 
   // Registered D + 2+ generals → strong
+  // Trust SOS party registration — it's the official record
   if(isDem && votedN >= 2) return 'strong';
 
   // NP + 4+ generals + D primary → leans
@@ -3086,57 +3246,83 @@ function adaptiveThreshold(pts){
   return Math.max(0.05, Math.min(0.25, median*2));
 }
 
+// Door-to-door score filter state
+let _doorScores = new Set(['strong','leans']); // default: strong + leans
+
+function toggleDoorScore(btn){
+  const score = btn.dataset.dscore;
+  if(_doorScores.has(score)){
+    if(_doorScores.size === 1){ toast('Select at least one voter type', true); return; }
+    _doorScores.delete(score);
+    btn.style.background = 'var(--surface2)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--text)';
+    btn.classList.remove('selected');
+  } else {
+    _doorScores.add(score);
+    btn.style.background = 'var(--fci-sky)';
+    btn.style.borderColor = 'var(--fci-sky)';
+    btn.style.color = '#fff';
+    btn.classList.add('selected');
+  }
+  const warn = document.getElementById('door-unknown-warning');
+  if(warn) warn.style.display = _doorScores.has('unknown') ? '' : 'none';
+}
+
 function clusterVoters(vl){
-  // Exclude Republican donors, registered Republicans, and mail-only households (assisted living/dorms)
-  const mailOnlyList = vl.filter(v => v.mailOnly);
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly);
-  const ROUTE_TARGET=15;
-  const valid=vl.filter(v=>v.lat&&v.lon);
-  const noCoord=vl.filter(v=>!v.lat||!v.lon);
+  const ROUTE_TARGET = 20; // 20 households per route
+  // Exclude Republicans and mail-only
+  // Also treat LOT address voters as mail-only (trailer park residents)
+  const isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
+  const mailOnlyList = vl.filter(v => v.mailOnly || isLotAddr(v));
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly && !isLotAddr(v));
 
-  if(!valid.length) return {walk:[],mail:[...noCoord],thresh:0.12};
-
-  const thresh=adaptiveThreshold(valid);
-
-  // Step 1: group by identical coords
-  const coordMap=new Map();
-  valid.forEach(v=>{
-    const key=`${v.lat.toFixed(6)},${v.lon.toFixed(6)}`;
-    if(!coordMap.has(key)) coordMap.set(key,[]);
-    coordMap.get(key).push(v);
+  // Apply door-to-door score filter — include household if ANY member matches
+  const scoreFiltered = vl.filter(v => {
+    // Check if any individual in the household matches the score filter
+    const members = v.voters && v.voters.length ? v.voters : [null];
+    return members.some(vn => {
+      const presOnly = Array.isArray(vn) ? (vn[3] || false) : (vn && vn.presOnly) || false;
+      const s = v.scoreOverride && v.score ? v.score
+        : autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+      if(_doorScores.has('strong') && s === 'strong') return true;
+      if(_doorScores.has('leans')  && s === 'leans')  return true;
+      if(_doorScores.has('unknown') && s !== 'strong' && s !== 'leans') return true;
+      return false;
+    });
   });
-  const groups=[...coordMap.values()];
 
-  // Step 2: BFS-merge groups within adaptive threshold
-  const assigned=new Set(), clusters=[];
-  for(let i=0;i<groups.length;i++){
-    if(assigned.has(i)) continue;
-    const grp=[i]; assigned.add(i); const q=[i];
-    while(q.length){
-      const ci=q.shift();
-      const cPt=groups[ci][0];
-      for(let j=0;j<groups.length;j++){
-        if(!assigned.has(j)){
-          const jPt=groups[j][0];
-          if(haversine(cPt.lat,cPt.lon,jPt.lat,jPt.lon)<=thresh){
-            grp.push(j); assigned.add(j); q.push(j);
-          }
-        }
+  const valid   = scoreFiltered.filter(v => v.lat && v.lon);
+  const noCoord = scoreFiltered.filter(v => !v.lat || !v.lon);
+  if(!valid.length) return {walk:[], mail:[...noCoord, ...mailOnlyList], thresh:0.12};
+
+  // Nearest-neighbor greedy clustering into routes of ROUTE_TARGET
+  // Build routes by repeatedly finding the closest unassigned voter
+  const unassigned = [...valid];
+  const walk = [];
+
+  while(unassigned.length > 0){
+    const route = [];
+    // Start from the northernmost unassigned voter
+    unassigned.sort((a,b) => b.lat - a.lat);
+    route.push(unassigned.shift());
+
+    while(route.length < ROUTE_TARGET && unassigned.length > 0){
+      // Find closest unassigned to last point in route
+      const last = route[route.length - 1];
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for(let i = 0; i < unassigned.length; i++){
+        const d = haversine(last.lat, last.lon, unassigned[i].lat, unassigned[i].lon);
+        if(d < bestDist){ bestDist = d; bestIdx = i; }
       }
+      route.push(unassigned.splice(bestIdx, 1)[0]);
     }
-    clusters.push(grp.flatMap(idx=>groups[idx]));
+    walk.push(route);
   }
 
-  // Step 3: split large clusters, truly isolated single-address → mail
-  const walk=[], mail=[...noCoord];
-  clusters.forEach(cl=>{
-    if(cl.length < 15){ cl.forEach(v=>mail.push(v)); return; }  // small clusters → mail
-    // Sort N→S, W→E for logical walking order
-    cl.sort((a,b)=> a.lat!==b.lat ? b.lat-a.lat : a.lon-b.lon);
-    for(let i=0;i<cl.length;i+=ROUTE_TARGET) walk.push(cl.slice(i,i+ROUTE_TARGET));
-  });
-
-  return {walk, mail, thresh};
+  const mail = [...noCoord, ...mailOnlyList];
+  return {walk, mail, thresh: 0.12};
 }
 
 function renderMap(){
@@ -3842,6 +4028,32 @@ function _saveAdminVoterEdits(edits){
 
 
 
+async function saveAdminDistrictFix(){
+  if(!mId || !adminSession){ toast('Admin login required', true); return; }
+  const stHouse   = document.getElementById('m-admin-st-house').value.trim();
+  const stSenate  = document.getElementById('m-admin-st-senate').value.trim();
+  const congDist  = document.getElementById('m-admin-cong-dist').value.trim();
+  const countyNum = document.getElementById('m-admin-county-num').value.trim();
+  try {
+    showLoadingOverlay('Saving district fix…');
+    const res = await apiPost('/api/admin/fix-district', {
+      id: mId, stHouse, stSenate, congDist, countyNum
+    });
+    hideLoadingOverlay();
+    if(res.ok){
+      // Update the voter in memory
+      const v = voters.find(v=>v.id===mId) || mailList.find(v=>v.id===mId);
+      if(v){ v.stHouse=stHouse; v.stSenate=stSenate; v.congDist=congDist; v.countyNum=countyNum; }
+      toast('✅ District assignment corrected');
+    } else {
+      toast('Error: ' + (res.error||'unknown'), true);
+    }
+  } catch(e){
+    hideLoadingOverlay();
+    toast('Error saving: ' + e.message, true);
+  }
+}
+
 function saveAdminVoterEdits(){
   if(!mId) return;
   const v = voters.find(x => String(x.id) === String(mId));
@@ -3893,6 +4105,32 @@ function getVoterEdit(id){
   return loadVoterEdits()[String(id)] || {};
 }
 
+
+async function saveAdminDistrictFix(){
+  if(!mId || !adminSession){ toast('Admin login required', true); return; }
+  const stHouse   = document.getElementById('m-admin-st-house').value.trim();
+  const stSenate  = document.getElementById('m-admin-st-senate').value.trim();
+  const congDist  = document.getElementById('m-admin-cong-dist').value.trim();
+  const countyNum = document.getElementById('m-admin-county-num').value.trim();
+  try {
+    showLoadingOverlay('Saving district fix…');
+    const res = await apiPost('/api/admin/fix-district', {
+      id: mId, stHouse, stSenate, congDist, countyNum
+    });
+    hideLoadingOverlay();
+    if(res.ok){
+      // Update the voter in memory
+      const v = voters.find(v=>v.id===mId) || mailList.find(v=>v.id===mId);
+      if(v){ v.stHouse=stHouse; v.stSenate=stSenate; v.congDist=congDist; v.countyNum=countyNum; }
+      toast('✅ District assignment corrected');
+    } else {
+      toast('Error: ' + (res.error||'unknown'), true);
+    }
+  } catch(e){
+    hideLoadingOverlay();
+    toast('Error saving: ' + e.message, true);
+  }
+}
 
 function saveAdminVoterEdits(){
   if(!mId) return;
@@ -3976,6 +4214,13 @@ function adminCreateCampaign(){
   document.getElementById('admin-cam-seat').value = '';
   renderAdminCampaignList();
   toast('Campaign "' + name + '" created ✓');
+  // Close all overlays and return to main screen
+  ['admin-dash-overlay','cand-dash-overlay','cand-login-overlay','vol-start-overlay',
+   'auth-login-overlay','auth-register-overlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = 'none';
+  });
+  showScreen('upload');
 }
 
 async function adminCanvassAs(camId){
@@ -4178,7 +4423,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -4577,6 +4822,10 @@ function openModal(id){
       document.getElementById('m-admin-name').value    = e.name    || '';
       document.getElementById('m-admin-address').value = e.address || '';
       document.getElementById('m-admin-exclude').checked = e.exclude || false;
+      document.getElementById('m-admin-st-house').value   = e.stHouse   !== undefined ? e.stHouse   : (v.stHouse   || '');
+      document.getElementById('m-admin-st-senate').value  = e.stSenate  !== undefined ? e.stSenate  : (v.stSenate  || '');
+      document.getElementById('m-admin-cong-dist').value  = e.congDist  !== undefined ? e.congDist  : (v.congDist  || '');
+      document.getElementById('m-admin-county-num').value = e.countyNum !== undefined ? e.countyNum : (v.countyNum || '');
     }
   }
 
@@ -5016,8 +5265,8 @@ function updateGenerateBtn(){
     list = list.filter(v=>{ const val=norm(v.precinctName||v.precinct||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
   }
   if(filterField && filterDistrict){
-    const want = norm(filterDistrict);
-    const filtered = list.filter(v=>{ const val=norm(v[filterField]||''); return val&&(val===want||val.includes(want)||want.includes(val)); });
+    const want = (filterDistrict||'').trim();
+    const filtered = list.filter(v=>{ const val = (v[filterField]||'').trim(); return val && val === want; });
     // Only apply if it actually matches some voters — if district fields are empty in D1, skip filter
     if(filtered.length > 0) list = filtered;
   }
@@ -5033,6 +5282,42 @@ function updateGenerateBtn(){
   }
 }
 
+function _buildHouseholdName(v){
+  // Build a smart household name from vns array
+  // Same last name: "Walter & Marilyn Palmer"
+  // Different last names: "Walter Palmer & Marilyn Smith"
+  // Single voter: "Walter Palmer"
+  const vns = v.vns || v.voters || [];
+  if(!vns || !vns.length){
+    return v.name || v.n || 'Resident';
+  }
+
+  // Parse each voter into {first, last}
+  const people = vns.map(vn => {
+    if(Array.isArray(vn)){
+      return { first: vn[0] || '', last: vn[1] || '' };
+    } else if(vn && typeof vn === 'object'){
+      const parts = (vn.name || '').trim().split(' ');
+      return { first: parts[0] || '', last: parts.slice(1).join(' ') || '' };
+    }
+    return { first: String(vn), last: '' };
+  }).filter(p => p.first);
+
+  if(!people.length) return v.name || v.n || 'Resident';
+  if(people.length === 1) return `${people[0].first} ${people[0].last}`.trim();
+
+  // Check if all share same last name
+  const lastNames = [...new Set(people.map(p => p.last.toUpperCase()).filter(Boolean))];
+  if(lastNames.length === 1 && lastNames[0]){
+    // Same last name — "Walter & Marilyn Palmer"
+    const firsts = people.map(p => p.first).join(' & ');
+    return `${firsts} ${people[0].last}`;
+  } else {
+    // Different last names — "Walter Palmer & Marilyn Smith"
+    return people.map(p => `${p.first} ${p.last}`.trim()).join(' & ');
+  }
+}
+
 function showMailLabelsOverlay(voterList){
   const overlay = document.getElementById('mail-labels-overlay');
   const body = document.getElementById('mlo-body');
@@ -5041,21 +5326,78 @@ function showMailLabelsOverlay(voterList){
   if(panel) panel.style.display = 'none';
 
   const totalIndividuals = voterList.reduce((sum, v) => sum + (v.voters && v.voters.length ? v.voters.length : 1), 0);
-  sub.textContent = `${totalIndividuals} voters across ${voterList.length} households · click any label to see voter history`;
+  sub.textContent = _mqMailMode === 'household'
+    ? `${voterList.length} household labels · click any label to see voter history`
+    : `${totalIndividuals} voters across ${voterList.length} households · click any label to see voter history`;
 
   const labelCards = [];
   // Store per-label voter data for sidebar
   const _labelData = [];
 
   for(const v of voterList){
-    const _addr = v.address || v.a || '';
+    // Use mailing address for labels if available (e.g. trailer parks, PO Boxes)
+    const _addr = v.mailAddr || v.address || v.a || '';
     const _name = v.name || v.n || '';
-    const parts = _addr.split(',').map(s => s.trim());
+    const addrParts = _addr.split(',').map(s => s.trim());
     let line1 = _addr, line2 = '';
-    if(parts.length >= 3){ line1 = parts[0]; line2 = parts.slice(1).join(', '); }
-    else if(parts.length === 2){ line1 = parts[0]; line2 = parts[1]; }
+    if(addrParts.length >= 3){ line1 = addrParts[0]; line2 = addrParts.slice(1).join(', '); }
+    else if(addrParts.length === 2){ line1 = addrParts[0]; line2 = addrParts[1]; }
+    // Add OH state abbreviation if not already present
+    if(line2 && !/\bOH\b/.test(line2)){
+      // Insert OH before zip: "LANCASTER 43130" → "LANCASTER OH 43130"
+      line2 = line2.replace(/(\b\d{5}\b)/, 'OH $1').replace(/^OH /, '');
+      if(!/\bOH\b/.test(line2)) line2 += ', OH';
+    }
 
-    if(v.voters && v.voters.length){
+    if(_mqMailMode === 'household'){
+      // ONE label per household — but only include members who match the score filter
+      // Score each individual member and filter to qualifying ones only
+      const vnsArr = v.vns ? (typeof v.vns === 'string' ? JSON.parse(v.vns) : v.vns) : [];
+      const members = v.voters && v.voters.length ? v.voters : vnsArr.map(vn => Array.isArray(vn) ? {name:(vn[0]||'')+' '+(vn[1]||''), age:vn[2], presOnly:vn[3]||false} : vn);
+
+      // Build a filtered voter object with only qualifying members
+      let qualifyingMembers = members;
+      if(_mqScore && _mqScore !== 'all' && members.length > 0){
+        qualifyingMembers = members.filter(m => {
+          const presOnly = Array.isArray(m) ? (m[3]||false) : (m&&m.presOnly)||false;
+          const s = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, presOnly);
+          if(_mqScore === 'strong') return s === 'strong';
+          if(_mqScore === 'leans')  return s === 'leans';
+          if(_mqScore === 'leansstrong') return s === 'strong' || s === 'leans';
+          return true;
+        });
+        // If nobody qualifies, skip this household
+        if(!qualifyingMembers.length) continue;
+      }
+
+      // Build name from qualifying members only
+      const qualVns = qualifyingMembers.map(m => {
+        if(Array.isArray(m)) return {first:m[0]||'',last:m[1]||''};
+        const parts = (m.name||'').trim().split(' ');
+        return {first:parts[0]||'', last:parts.slice(1).join(' ')||''};
+      }).filter(p=>p.first);
+
+      let hhName;
+      if(qualVns.length === 0){
+        hhName = _buildHouseholdName(v);
+      } else {
+        const lastNames = [...new Set(qualVns.map(p=>p.last.toUpperCase()).filter(Boolean))];
+        if(lastNames.length === 1 && lastNames[0]){
+          hhName = qualVns.map(p=>p.first).join(' & ') + ' ' + qualVns[0].last;
+        } else {
+          hhName = qualVns.map(p=>`${p.first} ${p.last}`.trim()).join(' & ');
+        }
+      }
+
+      const dataIdx = _labelData.length;
+      _labelData.push({ v, first: hhName, last: '', age: null, presOnly: false });
+      labelCards.push(
+        `<div class="label-card" data-lid="${dataIdx}" onclick="showLabelHistory(${dataIdx})" style="cursor:pointer;">`
+        + `<div class="lc-name">${hhName}</div>`
+        + `<div class="lc-addr">${line1}${line2?'<br>'+line2:''}</div>`
+        + `</div>`
+      );
+    } else if(v.voters && v.voters.length){
       for(const vn of v.voters){
         let first, last, age, presOnly;
         if(Array.isArray(vn)){
@@ -5140,9 +5482,13 @@ function showLabelHistory(dataIdx){
           a = vn.age; po = vn.presOnly;
         }
         const isThis = fn===first && ln===last;
+        const memberScore = autoScoreIndividual(v.party, v.voting, v.lastPrimary, v.specialsVoted, v.donations, po);
+        const msColor = memberScore==='strong'?'var(--strong)':memberScore==='leans'?'var(--leans)':'var(--text-muted)';
+        const msLabel = memberScore==='strong'?'★':memberScore==='leans'?'~':'?';
         return `<div style="padding:5px 0;border-bottom:1px solid var(--border);${isThis?'background:var(--accent-bg);border-radius:4px;padding:5px 6px;':''}">
           <span style="font-weight:${isThis?700:400};font-size:12px;color:var(--text);">${fn} ${ln}</span>
           ${a ? `<span style="font-size:11px;color:var(--text-muted);margin-left:4px;">age ${a}</span>` : ''}
+          <span style="font-size:11px;color:${msColor};margin-left:6px;font-weight:700;">${msLabel}</span>
           ${po ? `<span style="font-size:10px;color:#f59e0b;margin-left:4px;" title="Votes in presidential elections only">🗳 pres only</span>` : ''}
         </div>`;
       }).join('')
@@ -5192,6 +5538,19 @@ function showLabelHistory(dataIdx){
       ${v.lastPrimary ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Last primary: ${v.lastPrimary}${v.lastPrimaryYear ? ' (' + v.lastPrimaryYear + ')' : ''}</div>` : ''}
       ${v.specialsVoted ? `<div style="font-size:11px;color:var(--text-muted);">${v.specialsVoted} special elections</div>` : ''}
     </div>
+
+    ${(()=>{
+      const _dp = [];
+      if(v.congDist)    _dp.push('🇺🇸 CD-' + v.congDist);
+      if(v.stSenate)    _dp.push('🏛 SD-' + v.stSenate);
+      if(v.stHouse)     _dp.push('🏛 HD-' + v.stHouse);
+      if(v.precinctName) _dp.push('📍 ' + v.precinctName);
+      if(v.schoolDist)  _dp.push('🏫 ' + v.schoolDist);
+      return _dp.length ? `<div style="margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Districts</div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.7;">${_dp.join('<br>')}</div>
+      </div>` : '';
+    })()}
 
     <div style="margin-bottom:12px;">
       <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Household (${v.voters?v.voters.length:1})</div>
@@ -5488,10 +5847,10 @@ function applyMailFiltersToVoters(vlist){
     const districtToCheck = mailSortDonors ? _mailDonorDistrict : mailFilterDistrict;
     if(districtToCheck){
       const distMap = {
-        HD69:{field:'stHouse',  value:'OHIO ST HOUSE REP 69'},
-        HD73:{field:'stHouse',  value:'OHIO ST HOUSE REP 73'},
-        SD20:{field:'stSenate', value:'OHIO STATE SENATE 20'},
-        CD12:{field:'congDist', value:'12TH CONGRESSIONAL'}
+        HD69:{field:'stHouse',  value:'69'},
+        HD73:{field:'stHouse',  value:'73'},
+        SD20:{field:'stSenate', value:'20'},
+        CD12:{field:'congDist', value:'12'}
       };
       const dm = distMap[districtToCheck];
       // Only apply district filter if voters actually have district data populated
@@ -5507,10 +5866,10 @@ function applyMailFiltersToVoters(vlist){
       const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
       if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
     }
-    // Ward filter — only apply if voters actually have ward data
+    // Ward filter — must have a ward AND it must match the selected ward(s)
     if(!mailSortDonors && mailFilterWards.length){
-      const hasWardData = result.some(v2 => (v2.ward||'').trim().length > 0);
-      if(hasWardData && !mailFilterWards.includes((v.ward||'').toUpperCase())) return false;
+      const voterWard = (v.ward||'').toUpperCase().trim();
+      if(!voterWard || !mailFilterWards.includes(voterWard)) return false;
     }
     // Central committee precinct filter
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
@@ -5535,6 +5894,9 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
+        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
+        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
+        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
         // HD-69 and CD-12 span multiple counties — no county filter
         const _crossCounty = (filterField === 'congDist') ||
                              (filterField === 'stHouse' && filterDistrict === '69');
@@ -5546,10 +5908,10 @@ async function runMailCanvass(){
         else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
         else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
         else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-        // Don't filter by district at DB level — fields empty in D1
+        // Filter by district at DB level — fields now populated
       }
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -5602,6 +5964,18 @@ async function runMailCanvass(){
   // Pre-populate donor org chips now that voters are loaded
   _populateDonorOrgChips();
 
+  // Re-apply latest contact state from localStorage (catches contacts from other sessions)
+  if(volunteerCampaignId){
+    const latestState = loadContactState(volunteerCampaignId);
+    if(Object.keys(latestState).length){
+      base.forEach(v=>{ const s=latestState[v.id]; if(s) v.contactStatus = s.contactStatus||'pending'; });
+      const before2 = base.length;
+      base = base.filter(v => v.contactStatus !== 'contacted');
+      const removed2 = before2 - base.length;
+      if(removed2 > 0) toast(`${removed2} already-contacted households excluded`);
+    }
+  }
+
   let filtered = applyMailFiltersToVoters(base);
   if(!filtered.length){ toast('No voters match those filters — try broadening your criteria.',true); return; }
   filtered.forEach(v=>{ v.assignment='mail'; });
@@ -5642,6 +6016,7 @@ function mqSetMode(mode, btn){
 }
 
 function mqPickScore(btn){
+  if(btn.disabled) return;  // locked by candidate score focus
   _mqScore = btn.dataset.score;
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
     const sel = b === btn;
@@ -5687,19 +6062,34 @@ function _mqRebuildQuickPicks(){
 
 function showMailQtyPicker(voterList){
   _mqPendingList = voterList;
-  _mqScore = 'all';
+  // Auto-set score filter from candidate focus if set
+  const fa = (candidateSession && candidateSession.focusAreas) || {};
+  if(fa.score === 'strong')      _mqScore = 'strong';
+  else if(fa.score === 'leans')  _mqScore = 'leansstrong';
+  else                           _mqScore = 'all';
   _mqMailMode = 'household';
   // Reset mode buttons
   const hhBtn = document.getElementById('mq-mode-hh');
   const indBtn = document.getElementById('mq-mode-ind');
   if(hhBtn)  { hhBtn.style.background='var(--fci-sky)'; hhBtn.style.borderColor='var(--fci-sky)'; hhBtn.style.color='#fff'; }
   if(indBtn) { indBtn.style.background='var(--surface2)'; indBtn.style.borderColor='var(--border)'; indBtn.style.color='var(--text)'; }
-  // Reset score buttons
+  // Set score buttons — highlight the auto-selected one, lock if candidate has a preference
   document.querySelectorAll('.mq-score-btn').forEach(b=>{
-    const isAll = b.dataset.score === 'all';
-    b.style.background = isAll ? 'var(--fci-sky)' : 'var(--surface2)';
-    b.style.borderColor = isAll ? 'var(--fci-sky)' : 'var(--border)';
-    b.style.color = isAll ? '#fff' : 'var(--text)';
+    const isSelected = b.dataset.score === _mqScore;
+    b.style.background = isSelected ? 'var(--fci-sky)' : 'var(--surface2)';
+    b.style.borderColor = isSelected ? 'var(--fci-sky)' : 'var(--border)';
+    b.style.color = isSelected ? '#fff' : 'var(--text)';
+    if(fa.score && fa.score !== 'all'){
+      b.disabled = !isSelected;
+      b.style.opacity = isSelected ? '1' : '0.35';
+      b.style.cursor = isSelected ? 'pointer' : 'not-allowed';
+      b.title = isSelected ? '' : 'Score filter locked by campaign';
+    } else {
+      b.disabled = false;
+      b.style.opacity = '1';
+      b.style.cursor = 'pointer';
+      b.title = '';
+    }
   });
   _mqRebuildQuickPicks();
   document.getElementById('mail-qty-overlay').style.display = 'flex';
@@ -5726,7 +6116,9 @@ function mqUpdateSheets(){
   const val = parseInt(document.getElementById('mq-custom').value);
   const el = document.getElementById('mq-sheet-hint');
   if(val && val > 0){
-    const sheets = Math.ceil(val / 30);
+    // In household mode the number IS the label count; in individual mode it's per voter
+    const labelCount = _mqMailMode === 'household' ? val : val;
+    const sheets = Math.ceil(labelCount / 30);
     el.textContent = '= ' + sheets + ' sheet' + (sheets===1?'':'s');
   } else {
     el.textContent = '';
@@ -5749,26 +6141,39 @@ function mqConfirm(){
   const scoreFiltered = _mqScoreFiltered();
   const totalIndiv = _mqTotalIndiv(scoreFiltered);
 
-  // Slice to requested count (by individuals, not households)
+  // Randomize order for independent canvassing so same voters aren't always picked
+  const toSlice = volunteerCampaignId
+    ? scoreFiltered  // candidate mode: keep sorted order (donors first etc.)
+    : [...scoreFiltered].sort(() => Math.random() - 0.5);  // independent: shuffle
+
+  // Slice to requested count
   let sliced;
-  if(isAll || num >= totalIndiv){
-    sliced = scoreFiltered;
+  if(_mqMailMode === 'household'){
+    // Household mode: num = number of households
+    if(isAll || num >= toSlice.length){
+      sliced = toSlice;
+    } else {
+      sliced = toSlice.slice(0, num);
+    }
   } else {
-    // Build sliced list: take households until we hit num individuals
-    sliced = [];
-    let count = 0;
-    for(const v of scoreFiltered){
-      const indiv = v.voters && v.voters.length ? v.voters.length : 1;
-      if(count + indiv <= num){
-        sliced.push(v);
-        count += indiv;
-      } else {
-        // Partial household — take only as many voters as needed
-        const needed = num - count;
-        if(needed > 0 && v.voters && v.voters.length){
-          sliced.push({...v, voters: v.voters.slice(0, needed), hhCount: needed});
+    // Individual mode: num = number of individual voters
+    if(isAll || num >= totalIndiv){
+      sliced = toSlice;
+    } else {
+      sliced = [];
+      let count = 0;
+      for(const v of toSlice){
+        const indiv = v.voters && v.voters.length ? v.voters.length : 1;
+        if(count + indiv <= num){
+          sliced.push(v);
+          count += indiv;
+        } else {
+          const needed = num - count;
+          if(needed > 0 && v.voters && v.voters.length){
+            sliced.push({...v, voters: v.voters.slice(0, needed), hhCount: needed});
+          }
+          break;
         }
-        break;
       }
     }
   }
@@ -5776,9 +6181,69 @@ function mqConfirm(){
   voters   = sliced;
   mailList = sliced;
   showMailLabelsOverlay(sliced);
+  // For candidate campaigns: ask if they want to mark as contacted right when labels appear
+  if(volunteerCampaignId){
+    setTimeout(()=>{ document.getElementById('mail-contacted-overlay').style.display='flex'; }, 400);
+  }
+}
+
+function doneMailLabels(){
+  document.getElementById('mail-labels-overlay').classList.remove('open');
+  document.getElementById('mlo-history-panel').style.display='none';
+}
+
+function closeMailLabels(){
+  document.getElementById('mail-labels-overlay').classList.remove('open');
+  document.getElementById('mlo-history-panel').style.display='none';
+  // If canvassing for a candidate, ask if labels have been mailed
+  if(volunteerCampaignId && mailList && mailList.length > 0){
+    document.getElementById('mail-contacted-overlay').style.display='flex';
+  }
+}
+
+function mailContactedConfirm(didMail){
+  document.getElementById('mail-contacted-overlay').style.display='none';
+  if(didMail && volunteerCampaignId && mailList && mailList.length > 0){
+    const state = loadContactState(volunteerCampaignId);
+    let count = 0;
+    for(const v of mailList){
+      if(!state[v.id] || state[v.id].contactStatus !== 'contacted'){
+        state[v.id] = {
+          ...(state[v.id] || {}),
+          contactStatus: 'contacted',
+          contactReason: 'mailed',
+          notes: (state[v.id]&&state[v.id].notes)||'',
+          yardSign: false,
+          spokeWith: [],
+        };
+        count++;
+      }
+    }
+    saveContactStateRaw(volunteerCampaignId, state);
+    if(count > 0) toast(`✉️ ${count} households marked as contacted`);
+  }
 }
 
 function pickMode(mode){
+  // Show/hide door score filter
+  const dsf = document.getElementById('door-score-filter');
+  if(dsf) dsf.style.display = mode === 'door' ? '' : 'none';
+  // Reset door scores to default
+  _doorScores = new Set(['strong','leans']);
+  document.querySelectorAll('.door-score-btn').forEach(b => {
+    const sel = _doorScores.has(b.dataset.dscore);
+    b.style.background = sel ? 'var(--fci-sky)' : 'var(--surface2)';
+    b.style.borderColor = sel ? 'var(--fci-sky)' : 'var(--border)';
+    b.style.color = sel ? '#fff' : 'var(--text)';
+    b.classList.toggle('selected', sel);
+  });
+  const warn = document.getElementById('door-unknown-warning');
+  if(warn) warn.style.display = 'none';
+  // Restore all hidden area buttons (will be re-filtered by applyVolunteerFocusToWizard if needed)
+  document.querySelectorAll('#body-area .area-btn, #body-area .area-group, #body-area .area-group-label').forEach(el => {
+    el.style.display = '';
+    if(el.classList.contains('area-btn')){ el.disabled = false; el.style.opacity = ''; el.style.cursor = ''; }
+  });
   // Clear stale voter data and downstream state when switching modes
   ALL_VOTERS_RAW = [];
   _currentAreaVoters = null;
@@ -5994,19 +6459,19 @@ function openMapsRoute(appChoice){
   if(useApple){
     // Apple Maps — supports up to 9 waypoints via daddr chaining
     if(addrs.length === 1){
-      window.open(`https://maps.apple.com/?q=${enc(addrs[0])}&dirflg=w`, '_blank');
+      window.open(`https://maps.apple.com/?q=${enc(addrs[0])}&dirflg=w`, '_blank', 'noopener,noreferrer');
     } else {
       const origin = enc(addrs[0]);
       const dest   = enc(addrs[addrs.length - 1]);
       // Apple Maps waypoints via comma-separated daddr (limited support — use coords)
       const url = `https://maps.apple.com/?saddr=${origin}&daddr=${dest}&dirflg=w`;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
     toast(`Opening ${cl.length} stops in Apple Maps 🍎`);
   } else {
     // Google Maps walking directions
     if(addrs.length === 1){
-      window.open(`https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`, '_blank');
+      window.open(`https://www.google.com/maps/search/?api=1&query=${enc(addrs[0])}`, '_blank', 'noopener,noreferrer');
       return;
     }
     const origin = enc(addrs[0]);
@@ -6017,7 +6482,7 @@ function openMapsRoute(appChoice){
       + `&destination=${dest}`
       + (wpts ? `&waypoints=${wpts}` : '')
       + `&travelmode=walking`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
     toast(`Opening ${cl.length} stops in Google Maps 🗺`);
   }
 }
@@ -6217,7 +6682,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -6277,8 +6742,17 @@ async function generateRoutes(){
 
   await geocodeAll(voters);
   // Separate mail-only households (assisted living/dorms) before clustering
-  const _mailOnlyVoters = voters.filter(v => v.mailOnly);
-  const _doorVoters = voters.filter(v => !v.mailOnly);
+  const _isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
+  // Exclude mailOnly households with no lot number AND many members (hh > 4)
+  // These are catch-all park addresses where residents didn't register with a lot — undeliverable
+  const _isUndeliverable = v => {
+    if(!v.mailOnly) return false;
+    if(_isLotAddr(v)) return false;  // has a lot number — deliverable
+    const hhSize = parseInt(v.hh) || (v.vns ? (Array.isArray(v.vns) ? v.vns.length : 0) : 0) || (v.voters ? v.voters.length : 0) || 1;
+    return hhSize > 4;
+  };
+  const _mailOnlyVoters = voters.filter(v => (v.mailOnly || _isLotAddr(v)) && !_isUndeliverable(v));
+  const _doorVoters = voters.filter(v => !v.mailOnly && !_isLotAddr(v));
   const res=clusterVoters(_doorVoters);
   walkClusters=res.walk;
   // Combine clustered mail list with mail-only households
@@ -6712,7 +7186,8 @@ function _launchVolCampaign(cam, mode){
     // Fully collapse the mode step so it appears already-done
     document.getElementById('body-mode').style.display = 'none';
     document.getElementById('chip-mode').style.display = 'inline';
-    document.getElementById('change-mode').style.display = 'inline';
+    // Hide change-mode — mode is locked by campaign
+    document.getElementById('change-mode').style.display = 'none';
     const modeStep = document.getElementById('step-mode');
     if(modeStep){ modeStep.classList.remove('active'); modeStep.classList.add('done'); }
   }, 100);
@@ -6722,13 +7197,38 @@ function _launchVolCampaign(cam, mode){
 function applyVolunteerFocusToWizard(cam){
   const fa = cam.focusAreas || {};
 
-  // ── Auto-set canvassFor race from campaign district — skip step-race entirely ──
+  // ── Lock door-to-door score filter based on candidate score focus ──
+  if(fa.score && fa.score !== 'all'){
+    // Set _doorScores based on candidate preference
+    if(fa.score === 'strong'){
+      _doorScores = new Set(['strong']);
+    } else if(fa.score === 'leans'){
+      _doorScores = new Set(['strong','leans']);
+    }
+    // Update the UI chips and disable others
+    setTimeout(()=>{
+      document.querySelectorAll('.door-score-btn').forEach(b => {
+        const val = b.dataset.dscore;
+        const allowed = _doorScores.has(val);
+        b.style.background  = allowed ? 'var(--fci-sky)' : 'var(--surface2)';
+        b.style.borderColor = allowed ? 'var(--fci-sky)' : 'var(--border)';
+        b.style.color       = allowed ? '#fff' : 'var(--text-muted)';
+        b.classList.toggle('selected', allowed);
+        b.disabled = true;
+        b.style.opacity = allowed ? '1' : '0.35';
+        b.style.cursor = 'not-allowed';
+        b.title = 'Score filter locked by campaign';
+      });
+    }, 200);
+  }
+
+  // ── Auto-set canvassFor race from campaign district — lock step-race ──
   if(fa.district && fa.district !== 'all'){
     const distMap = {
-      HD73:  { field:'stHouse',  value:'HD 73',  label:'Ohio House 73',    display:'HD-73',  race:'Ohio House District 73' },
-      HD69:  { field:'stHouse',  value:'HD 69',  label:'Ohio House 69',    display:'HD-69',  race:'Ohio House District 69' },
-      SD20:  { field:'stSenate', value:'SD 20',  label:'Ohio Senate 20',   display:'SD-20',  race:'Ohio State Senate District 20' },
-      CD12:  { field:'congDist', value:'12',      label:'US House Dist 12', display:'CD-12',  race:'U.S. House — District 12' }
+      HD73:  { field:'stHouse',  value:'73',  label:'Ohio House 73',    display:'HD-73',  race:'Ohio House District 73' },
+      HD69:  { field:'stHouse',  value:'69',  label:'Ohio House 69',    display:'HD-69',  race:'Ohio House District 69' },
+      SD20:  { field:'stSenate', value:'20',  label:'Ohio Senate 20',   display:'SD-20',  race:'Ohio State Senate District 20' },
+      CD12:  { field:'congDist', value:'12',  label:'US House Dist 12', display:'CD-12',  race:'U.S. House — District 12' }
     };
     const d = distMap[fa.district];
     if(d){
@@ -6736,13 +7236,89 @@ function applyVolunteerFocusToWizard(cam){
       canvassFor     = d.race || d.label;
       filterField    = d.field;
       filterDistrict = d.value;
+
+      // District → allowed area labels (data-area-label values)
+      const _districtAreas = {
+        // HD-69: southern/rural Fairfield County — from actual voter file data
+        'HD69': ['Lancaster','Canal Winchester','Carroll','Lithopolis','Amanda','Bremen','Stoutsville','Sugar Grove',
+                 'Hocking Twp','Berne Twp','Bloom Twp','Clearcreek Twp','Rushcreek Twp','Madison Twp','Amanda Twp','Richland Twp'],
+        // HD-73: northern/eastern Fairfield County — Pickerington, Violet, Lancaster city core, etc.
+        'HD73': ['Lancaster','Pickerington','Baltimore','Millersport','Pleasantville',
+                 'Violet Twp','Montgomery Twp','Walnut Twp','Greenfield Twp','Pleasant Twp',
+                 'Liberty Twp','Reynoldsburg','Columbus (Fairfield Co.)'],
+        'SD20': null,  // whole county
+        'CD12': null,  // whole county
+      };
+      const allowedAreas = _districtAreas[fa.district] || null;
+
+      // Lock race step — auto-select the matching race button and disable others
+      setTimeout(()=>{
+        const raceBtn = [...document.querySelectorAll('.race-btn')].find(b =>
+          b.dataset.field === d.field && b.dataset.district === d.value
+        );
+        if(raceBtn){
+          document.querySelectorAll('.race-btn').forEach(b => {
+            if(b !== raceBtn){
+              b.disabled = true;
+              b.style.opacity = '0.3';
+              b.style.cursor = 'not-allowed';
+              b.title = 'Race locked by campaign';
+            }
+          });
+          if(!raceBtn.classList.contains('selected')) raceBtn.click();
+        }
+        const changeRaceEl = document.getElementById('change-race');
+        if(changeRaceEl) changeRaceEl.style.display = 'none';
+        const changeRaceBtnEl = document.getElementById('change-race-btn');
+        if(changeRaceBtnEl) changeRaceBtnEl.style.display = 'none';
+
+        // Filter area buttons by district
+        if(allowedAreas){
+          document.querySelectorAll('#body-area .area-btn').forEach(b => {
+            const lbl = (b.dataset.areaLabel || b.textContent || '').trim();
+            if(!allowedAreas.includes(lbl)){
+              b.style.display = 'none';
+            }
+          });
+          // Hide empty section labels
+          document.querySelectorAll('#body-area .area-group').forEach(grp => {
+            const anyVisible = [...grp.querySelectorAll('.area-btn')].some(b => b.style.display !== 'none');
+            const label = grp.previousElementSibling;
+            grp.style.display = anyVisible ? '' : 'none';
+            if(label && label.classList.contains('area-group-label'))
+              label.style.display = anyVisible ? '' : 'none';
+          });
+        }
+      }, 150);
     }
+  } else if(fa.race && fa.race !== 'all'){
+    // Non-district race locked (e.g. County Commissioner, local office)
+    setTimeout(()=>{
+      const raceBtn = [...document.querySelectorAll('.race-btn')].find(b =>
+        (b.dataset.race||'').toLowerCase().includes(fa.race.toLowerCase())
+      );
+      if(raceBtn){
+        document.querySelectorAll('.race-btn').forEach(b => {
+          if(b !== raceBtn){
+            b.disabled = true;
+            b.style.opacity = '0.3';
+            b.style.cursor = 'not-allowed';
+            b.title = 'Race locked by campaign';
+          }
+        });
+        if(!raceBtn.classList.contains('selected')) raceBtn.click();
+      }
+      const changeRaceEl2 = document.getElementById('change-race');
+      if(changeRaceEl2) changeRaceEl2.style.display = 'none';
+      const changeRaceBtnEl2 = document.getElementById('change-race-btn');
+      if(changeRaceBtnEl2) changeRaceBtnEl2.style.display = 'none';
+    }, 150);
   } else {
-    // No specific district — volunteer must pick a race, clear any stale auto-race
+    // No specific district — volunteer must pick a race
     window._volAutoRace = null;
   }
 
-  // ── Auto-select city/precinct ──
+  // ── Auto-select city/precinct and lock area if candidate specified one ──
   if(fa.city && fa.city !== 'all'){
     setTimeout(()=>{
       const areaBtn = [...document.querySelectorAll('.area-btn')].find(b =>
@@ -6751,10 +7327,37 @@ function applyVolunteerFocusToWizard(cam){
       );
       if(areaBtn){
         selectArea(areaBtn);
-        // If candidate locked a specific precinct, store it — buildNeighborhoodStep will auto-click it
         if(fa.precinct) window._volAutoPrecinct = fa.precinct;
       }
-    }, 200);
+      // Hide irrelevant area buttons — only show areas matching the campaign city
+      document.querySelectorAll('#body-area .area-btn').forEach(b => {
+        const btnLabel = (b.dataset.areaLabel || b.textContent || '').toLowerCase();
+        const btnValue = (b.dataset.areaValue || '').toLowerCase();
+        const cityLower = fa.city.toLowerCase();
+        const matches = btnLabel.includes(cityLower) || btnValue.includes(cityLower);
+        if(!matches){
+          b.style.display = 'none';
+        }
+      });
+      // Also hide section labels that have no visible buttons
+      document.querySelectorAll('#body-area .area-group').forEach(grp => {
+        const anyVisible = [...grp.querySelectorAll('.area-btn')].some(b => b.style.display !== 'none');
+        const label = grp.previousElementSibling;
+        if(!anyVisible){
+          grp.style.display = 'none';
+          if(label && label.classList.contains('area-group-label')) label.style.display = 'none';
+        }
+      });
+      // Hide the "Change" links for area step — locked by campaign
+      const changeAreaEl = document.getElementById('change-area');
+      if(changeAreaEl) changeAreaEl.style.display = 'none';
+      // Also disable all visible area buttons so volunteer can't re-pick
+      document.querySelectorAll('#body-area .area-btn:not([style*="display: none"])').forEach(b => {
+        b.disabled = true;
+        b.style.cursor = 'not-allowed';
+        b.title = 'Area locked by campaign';
+      });
+    }, 300);
   } else {
     // No city — volunteer picks area themselves; race auto-collapses via _volRaceAutoCollapse
     if(canvassFor) window._volRaceAutoCollapse = true;
@@ -6940,6 +7543,21 @@ function saveContactState(){
   }
 }
 
+// Save a raw contact state object and sync to API
+async function saveContactStateRaw(camId, state){
+  if(!camId) return;
+  try{ localStorage.setItem(CONTACT_STORE_PREFIX+camId, JSON.stringify(state)); }catch(e){}
+  const updates = Object.entries(state).map(([id,s])=>({...s, id, updatedBy:_adminEmail||'volunteer'}));
+  if(!updates.length) return;
+  try{
+    await apiPost('/api/contacts/'+encodeURIComponent(camId), updates);
+    _setSyncBadge('ok','Synced');
+  } catch(e){
+    console.warn('Contact push fail:', e);
+    _setSyncBadge('err','Sync failed');
+  }
+}
+
 async function _pushContactsToAPI(camId){
   const state = buildContactState();
   const updates = Object.entries(state).map(([id,s])=>({...s, id, updatedBy:_adminEmail||'volunteer'}));
@@ -6988,7 +7606,7 @@ async function _pullContactsFromAPI(camId){
 
     applyToList(voters);
     applyToList(mailList);
-    renderRoutes();  // refresh UI
+    if(typeof renderWalk === 'function') renderWalk();  // refresh walk UI
     if(typeof renderMail === 'function') renderMail(); // refresh mail UI if active
   } catch(e){ console.warn('Contact pull fail:', e); }
 }
@@ -7063,6 +7681,7 @@ function doForgotPin(){
 const ADMIN_KEY = 'fci_admins';  // now stores array of {email, hash}
 let adminSession = false;
 let _adminEmail = '';
+let _adminSessionToken = '';
 
 function loadAdmins(){
   try{ return JSON.parse(localStorage.getItem(ADMIN_KEY)||'[]'); }catch(e){ return []; }
@@ -7076,38 +7695,69 @@ function showAdminLogin(){
   document.getElementById('cand-admin-form').style.display='';
   document.getElementById('cand-modal-title').textContent='Admin Login';
   document.getElementById('cand-admin-err').style.display='none';
-  // Show "Create first admin" hint if no admins yet
+  // Check API for whether any admins exist yet
   const hint = document.getElementById('admin-first-hint');
-  if(hint) hint.style.display = loadAdmins().length===0 ? '' : 'none';
+  if(hint){
+    fetch(WORKER_URL + '/api/auth/users', { headers: { 'X-FCI-Key': FCI_API_KEY } })
+      .then(r=>r.json())
+      .then(data=>{
+        const admins = (data.users||[]).filter(u=>u.role==='admin');
+        hint.style.display = admins.length === 0 ? '' : 'none';
+      }).catch(()=>{ hint.style.display = 'none'; });
+  }
 }
 
 async function adminLogin(){
   const email = (document.getElementById('cand-admin-email')||{value:''}).value.trim().toLowerCase();
   const pw    = document.getElementById('cand-admin-pw').value.trim();
-  const err   = document.getElementById('cand-admin-err');
-  err.style.display='none';
-  const admins = loadAdmins();
-  // Legacy single-pw fallback
-  const LEGACY_HASH = '8fb32b8bb42ea24b9605b3ecb10f3f43172dfe4f86c58acc69f85749926b60fd';
-  if(!pw){ err.textContent='Enter your password'; err.style.display=''; return; }
-  const h = await hashPin(pw);
-  if(admins.length===0){
-    // No admins set up yet — accept legacy 'admin' password and prompt to add first admin
-    if(h !== LEGACY_HASH){ err.textContent='Incorrect password'; err.style.display=''; return; }
-  } else {
-    if(!email){ err.textContent='Enter your email address'; err.style.display=''; return; }
-    const match = admins.find(a=>a.email===email && a.hash===h);
-    if(!match){ err.textContent='Email or password incorrect'; err.style.display=''; return; }
-    _adminEmail = email;
+  const errEl = document.getElementById('cand-admin-err');
+  errEl.style.display='none';
+  if(!email){ errEl.textContent='Enter your email address'; errEl.style.display=''; return; }
+  if(!pw){ errEl.textContent='Enter your password'; errEl.style.display=''; return; }
+
+  try {
+    const res = await fetch(WORKER_URL + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pw })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.ok){
+      errEl.textContent = data.error || 'Email or password incorrect';
+      errEl.style.display = '';
+      return;
+    }
+    // Store session token centrally in sessionStorage (not localStorage)
+    try { sessionStorage.setItem('fci_admin_token', data.token); } catch(e){}
+    try { sessionStorage.setItem('fci_admin_email', data.user.email); } catch(e){}
+    _adminEmail = data.user.email;
+    _adminSessionToken = data.token;
+    adminSession = true;
+    document.getElementById('cand-login-overlay').style.display='none';
+    try { openAdminDash(); } catch(e) {
+      const ol = document.getElementById('admin-dash-overlay');
+      if(ol) ol.style.display='flex';
+    }
+    try { updateQrFab(); } catch(e) {}
+  } catch(e) {
+    errEl.textContent = 'Connection error — try again';
+    errEl.style.display = '';
   }
-  adminSession=true;
-  document.getElementById('cand-login-overlay').style.display='none';
-  openAdminDash();
-  updateQrFab();
 }
 
-function adminLogout(){ _clearSession();
+function adminLogout(){
+  _clearSession();
+  // Clear API session
+  if(_adminSessionToken){
+    fetch(WORKER_URL + '/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-FCI-Session': _adminSessionToken }
+    }).catch(()=>{});
+  }
+  try { sessionStorage.removeItem('fci_admin_token'); sessionStorage.removeItem('fci_admin_email'); } catch(e){}
   adminSession = false;
+  _adminSessionToken = '';
+  _adminEmail = '';
   document.getElementById('admin-dash-overlay').style.display='none';
   updateQrFab();
   toast('Admin logged out');
@@ -7119,14 +7769,19 @@ function closeAdminDash(){
 
 function openAdminDash(){
   const ol = document.getElementById('admin-dash-overlay');
+  if(!ol){ console.error('admin-dash-overlay not found'); return; }
   ol.style.display='flex';
-  renderAdminCampaignList();
-  renderAdminAccounts();
+  try { renderAdminCampaignList(); } catch(e){ console.error('renderAdminCampaignList:', e); }
+  setTimeout(()=>ccRenderList('vacant'), 100); // default: show vacant CC seats
+  try { renderAdminAccounts(); } catch(e){ console.error('renderAdminAccounts:', e); }
   const npe = document.getElementById('admin-new-email');
   if(npe) npe.value='';
-  document.getElementById('admin-new-pw').value='';
-  document.getElementById('admin-new-pw2').value='';
-  document.getElementById('admin-pw-err').style.display='none';
+  const pw1 = document.getElementById('admin-new-pw');
+  const pw2 = document.getElementById('admin-new-pw2');
+  const pwerr = document.getElementById('admin-pw-err');
+  if(pw1) pw1.value='';
+  if(pw2) pw2.value='';
+  if(pwerr) pwerr.style.display='none';
 }
 
 async function renderAdminCampaignList(){
@@ -7150,6 +7805,7 @@ async function renderAdminCampaignList(){
         <div style="font-size:11px;color:var(--text-muted);">${c.email||'no email'} · ${contacted} contacted</div>
       </div>
       <button onclick="adminCanvassAs('${c.id}')" style="background:var(--accent-bg);border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🚶 Canvass</button>
+      <button onclick="adminEditCampaign('${c.id}')" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">✏️ Edit</button>
       <button onclick="adminDeleteCampaign('${c.id}')" style="background:var(--danger-bg);border:1px solid var(--danger);color:var(--danger);font-size:11px;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🗑 Delete</button>
       <button onclick="adminResetPin('${c.id}')" style="background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:11px;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;">🔑 Reset PIN</button>
     </div>`;
@@ -7183,36 +7839,115 @@ async function adminResetPin(camId){
   renderAdminCampaignList();
 }
 
+function adminEditCampaign(camId){
+  const cams = loadCampaigns();
+  const cam = cams[camId];
+  if(!cam) return;
+  // Store the id being edited
+  document.getElementById('admin-edit-cam-overlay').dataset.editId = camId;
+  // Populate fields
+  document.getElementById('edit-cam-name').value    = cam.name || '';
+  document.getElementById('edit-cam-seat').value    = cam.seat || '';
+  document.getElementById('edit-cam-email').value   = cam.email || '';
+  document.getElementById('edit-cam-message').value = cam.message || '';
+  document.getElementById('edit-cam-pin').value     = '';
+  document.getElementById('edit-cam-admin-only').checked = !!cam.adminOnly;
+  document.getElementById('edit-cam-err').style.display = 'none';
+  document.getElementById('admin-edit-cam-overlay').style.display = 'flex';
+}
+
+async function adminSaveEditCampaign(){
+  const overlay = document.getElementById('admin-edit-cam-overlay');
+  const camId = overlay.dataset.editId;
+  const cams = loadCampaigns();
+  const cam = cams[camId];
+  if(!cam) return;
+
+  const name    = document.getElementById('edit-cam-name').value.trim();
+  const seat    = document.getElementById('edit-cam-seat').value.trim();
+  const email   = document.getElementById('edit-cam-email').value.trim();
+  const message = document.getElementById('edit-cam-message').value.trim();
+  const pin     = document.getElementById('edit-cam-pin').value.trim();
+  const adminOnly = document.getElementById('edit-cam-admin-only').checked;
+  const err = document.getElementById('edit-cam-err');
+
+  if(!name){ err.textContent='Campaign name is required'; err.style.display=''; return; }
+  if(pin && pin.length < 4){ err.textContent='PIN must be at least 4 characters'; err.style.display=''; return; }
+
+  cam.name    = name;
+  cam.seat    = seat || cam.seat;
+  cam.email   = email || cam.email;
+  cam.message = message;
+  cam.adminOnly = adminOnly;
+  if(pin){ cam.pinHash = await hashPin(pin); cam.pinHint = pin.slice(0,2) + '****'; }
+
+  saveCampaigns(cams);
+  overlay.style.display = 'none';
+  renderAdminCampaignList();
+  if(typeof volShowCampaigns === 'function') volShowCampaigns();
+  toast('Campaign updated ✓');
+}
+
 async function addAdminAccount(){
   const email = (document.getElementById('admin-new-email').value||'').trim().toLowerCase();
   const pw1   = document.getElementById('admin-new-pw').value.trim();
   const pw2   = document.getElementById('admin-new-pw2').value.trim();
-  const err   = document.getElementById('admin-pw-err');
-  err.style.display='none';
-  if(!email||!email.includes('@')){ err.textContent='Enter a valid email'; err.style.display=''; return; }
-  if(!pw1||pw1.length<6){ err.textContent='Password must be at least 6 characters'; err.style.display=''; return; }
-  if(pw1!==pw2){ err.textContent='Passwords do not match'; err.style.display=''; return; }
-  const admins = loadAdmins();
-  if(admins.find(a=>a.email===email)){ err.textContent='That email is already registered as admin'; err.style.display=''; return; }
-  const hash = await hashPin(pw1);
-  admins.push({email, hash});
-  saveAdmins(admins);
-  document.getElementById('admin-new-email').value='';
-  document.getElementById('admin-new-pw').value='';
-  document.getElementById('admin-new-pw2').value='';
-  renderAdminAccounts();
-  toast(`Admin account added: ${email} ✓`);
+  const errEl = document.getElementById('admin-pw-err');
+  errEl.style.display='none';
+  if(!email||!email.includes('@')){ errEl.textContent='Enter a valid email'; errEl.style.display=''; return; }
+  if(!pw1||pw1.length<6){ errEl.textContent='Password must be at least 6 characters'; errEl.style.display=''; return; }
+  if(pw1!==pw2){ errEl.textContent='Passwords do not match'; errEl.style.display=''; return; }
+  try {
+    const headers = { 'Content-Type': 'application/json', 'X-FCI-Key': FCI_API_KEY };
+    if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+    const res = await fetch(WORKER_URL + '/api/auth/register', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email, password: pw1, name: email.split('@')[0], role: 'admin' })
+    });
+    const data = await res.json();
+    if(!res.ok){ errEl.textContent = data.error || 'Failed to create account'; errEl.style.display=''; return; }
+    document.getElementById('admin-new-email').value='';
+    document.getElementById('admin-new-pw').value='';
+    document.getElementById('admin-new-pw2').value='';
+    renderAdminAccounts();
+    toast(`Admin account added: ${email} ✓`);
+  } catch(e) {
+    errEl.textContent = 'Connection error — try again'; errEl.style.display='';
+  }
 }
 
 async function removeAdminAccount(email){
-  const admins = loadAdmins().filter(a=>a.email!==email);
-  saveAdmins(admins);
+  // Get user list and delete via API
+  try {
+    const headers = { 'X-FCI-Key': FCI_API_KEY };
+    if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+    const res = await fetch(WORKER_URL + '/api/auth/users', { headers });
+    const data = await res.json();
+    const user = (data.users||[]).find(u=>u.email===email);
+    if(user){
+      await fetch(WORKER_URL + '/api/auth/users/' + encodeURIComponent(user.id), {
+        method: 'DELETE', headers
+      });
+    }
+  } catch(e){}
   renderAdminAccounts();
   toast(`Removed admin: ${email}`);
 }
 
 function renderAdminAccounts(){
-  const admins = loadAdmins();
+  // Load from API
+  const headers = { 'X-FCI-Key': FCI_API_KEY };
+  if(_adminSessionToken) headers['X-FCI-Session'] = _adminSessionToken;
+  fetch(WORKER_URL + '/api/auth/users', { headers })
+    .then(r=>r.json())
+    .then(data=>{
+      const admins = (data.users||[]).filter(u=>u.role==='admin');
+      _renderAdminAccountsList(admins);
+    }).catch(()=>{ _renderAdminAccountsList([]); });
+}
+
+function _renderAdminAccountsList(admins){
   const el = document.getElementById('admin-accounts-list');
   if(!el) return;
   if(!admins.length){
@@ -7283,6 +8018,11 @@ function openCandidatePanel(){
     openCandidateDash();
     return;
   }
+  // Force close ALL other overlays including auth system
+  ['auth-login-overlay','auth-register-overlay','voter-lookup-overlay'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.style.display='none';
+  });
   const ol = document.getElementById('cand-login-overlay');
   ol.style.display='flex';
   showLoginForm();
@@ -7368,10 +8108,20 @@ async function candidateSetup(){
 
   const collectVol = document.getElementById('cand-setup-collect-vol')?.checked || false;
   cams[id] = { id, name, seat, email, pinHash, pinHint: pin.slice(0,2)+'****', focusAreas:{}, message:'', collectVolunteerInfo: collectVol };
-  saveCampaigns(cams);
+  try {
+    saveCampaigns(cams);
+  } catch(e) {
+    console.warn('Campaign save error:', e);
+  }
   candidateSession = cams[id];
   document.getElementById('cand-login-overlay').style.display='none';
-  afterCandidateLogin();
+  try {
+    afterCandidateLogin();
+  } catch(e) {
+    console.error('afterCandidateLogin error:', e);
+    toast('Account created but there was an error loading the session — please refresh', true);
+    return;
+  }
   toast(`Campaign "${name}" created ✓`);
 }
 
@@ -7553,7 +8303,7 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -7567,7 +8317,7 @@ async function buildPrecintChips(cityVal){
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).map(applyVoterEditsToVoter).filter(v => {
+        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
     if((v.party||'').toUpperCase() === 'R') return false;
     if(v.adminExclude) return false;
     if(isRepDonor(v)) return false;
@@ -7853,8 +8603,34 @@ function exportCandidateCSV(){
 // Only register SW when served from a real deployment (not preview/blob/file)
 // ── SCRIPT FULLY LOADED ─────────────────────────────────
 window._mainScriptLoaded = true;
+// Restore admin session from sessionStorage if token exists
+(async ()=>{
+  try {
+    const token = sessionStorage.getItem('fci_admin_token');
+    if(token){
+      const res = await fetch(WORKER_URL + '/api/auth/me', {
+        headers: { 'X-FCI-Session': token, 'X-FCI-Key': FCI_API_KEY }
+      });
+      if(res.ok){
+        const data = await res.json();
+        if(data.user && data.user.role === 'admin'){
+          _adminSessionToken = token;
+          _adminEmail = data.user.email;
+          adminSession = true;
+          try { updateQrFab(); } catch(e){}
+        }
+      } else {
+        sessionStorage.removeItem('fci_admin_token');
+        sessionStorage.removeItem('fci_admin_email');
+      }
+    }
+  } catch(e){}
+})();
 window._realMaybeCollectVolInfo = maybeCollectVolInfo;
-window._realDoAuthLogin = doAuthLogin;
+// Wire real doAuthLogin - only if it's a different function than the stub
+if(typeof doAuthLogin === 'function' && doAuthLogin !== window._doAuthLoginStub){
+  window._realDoAuthLogin = doAuthLogin;
+}
 window._realVlookupOpenProfile = vlookupOpenProfile;
 window._realVlookupOpenProfile = vlookupOpenProfile;
 
@@ -8131,8 +8907,8 @@ if('serviceWorker' in navigator){
 <!-- ═══════════════════════════════════════════════════════════════
      CANDIDATE LOGIN OVERLAY
 ═══════════════════════════════════════════════════════════════ -->
-<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:7500;background:var(--overlay-bg);align-items:center;justify-content:center;padding:20px;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:32px 28px;box-shadow:0 20px 60px var(--shadow);max-height:90vh;overflow-y:auto;">
+<div id="cand-login-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:var(--overlay-bg);align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:32px 28px;box-shadow:0 20px 60px var(--shadow);margin:auto;">
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:30px;margin-bottom:6px;">🗳️</div>
       <div style="font-size:18px;font-weight:700;color:var(--text);" id="cand-modal-title">Candidate Login</div>
@@ -8236,7 +9012,7 @@ if('serviceWorker' in navigator){
       <div style="margin-bottom:18px;">
         <label class="cand-label">Password</label>
         <input id="cand-admin-pw" type="password" placeholder="Admin password" class="cand-input pin-input" />
-        <div id="cand-admin-err" style="display:none;font-size:11px;color:var(--danger);margin-top:6px;"></div>>
+        <div id="cand-admin-err" style="display:none;font-size:11px;color:var(--danger);margin-top:6px;"></div>
       </div>
       <div style="display:flex;gap:10px;">
         <button onclick="showLoginForm()" class="cand-btn-cancel">← Back</button>
@@ -8293,6 +9069,18 @@ if('serviceWorker' in navigator){
           <button onclick="adminCreateCampaign()" style="background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:700;padding:10px;border-radius:8px;cursor:pointer;font-family:inherit;">+ Create Campaign</button>
         </div>
       </div>
+    </div>
+
+    <!-- Central Committee Canvassing -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;">
+      <div style="font-size:12px;font-weight:700;color:var(--fci-sky);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;">🏛 Central Committee Recruitment</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">74 vacant seats · canvass strong Dems in each precinct</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button onclick="ccShowAll()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">All Precincts</button>
+        <button onclick="ccShowVacant()" style="background:var(--fci-red);border:none;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Vacant Only</button>
+        <button onclick="ccShowFilled()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;">Filled</button>
+      </div>
+      <div id="cc-seat-list" style="display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto;"></div>
     </div>
 
     <!-- Admin password change -->
@@ -8362,6 +9150,20 @@ if('serviceWorker' in navigator){
           <button class="dash-chip" data-focus-type="district" data-focus-val="SD20" onclick="toggleFocusArea(this)">SD-20 (Senate)</button>
           <button class="dash-chip" data-focus-type="district" data-focus-val="CD12" onclick="toggleFocusArea(this)">CD-12 (Congress)</button>
           <button class="dash-chip" data-focus-type="district" data-focus-val="all" onclick="toggleFocusArea(this)">All Districts</button>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">Local / County Race (locks volunteers to this race)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <!-- Local/county race lock -->
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Commissioner" onclick="toggleFocusArea(this)">Commissioner</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Prosecutor" onclick="toggleFocusArea(this)">Prosecutor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Auditor" onclick="toggleFocusArea(this)">Auditor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Treasurer" onclick="toggleFocusArea(this)">County Treasurer</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="County Sheriff" onclick="toggleFocusArea(this)">Sheriff</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Common Pleas Judge" onclick="toggleFocusArea(this)">Common Pleas Judge</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="City Council" onclick="toggleFocusArea(this)">City Council</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Mayor" onclick="toggleFocusArea(this)">Mayor</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="School Board" onclick="toggleFocusArea(this)">School Board</button>
+          <button class="dash-chip" data-focus-type="race" data-focus-val="Township Trustee" onclick="toggleFocusArea(this)">Township Trustee</button>
         </div>
       </div>
 
@@ -8503,5 +9305,42 @@ if('serviceWorker' in navigator){
   </div>
 </div>
 
+<!-- Campaign Edit Modal -->
+<div id="admin-edit-cam-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:480px;margin:20px;padding:24px;box-shadow:0 20px 60px var(--shadow);overflow-y:auto;max-height:90vh;">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:18px;">✏️ Edit Campaign</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Campaign Name</div>
+        <input id="edit-cam-name" type="text" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Seat / Title</div>
+        <input id="edit-cam-seat" type="text" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Email</div>
+        <input id="edit-cam-email" type="email" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Volunteer Message</div>
+        <textarea id="edit-cam-message" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;resize:vertical;"></textarea>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">New PIN (leave blank to keep current)</div>
+        <input id="edit-cam-pin" type="text" placeholder="min 4 chars" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input id="edit-cam-admin-only" type="checkbox" style="width:16px;height:16px;cursor:pointer;">
+        <label for="edit-cam-admin-only" style="font-size:13px;color:var(--text);cursor:pointer;">Admin only (hide from volunteer login)</label>
+      </div>
+      <div id="edit-cam-err" style="display:none;font-size:12px;color:var(--danger);"></div>
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button onclick="adminSaveEditCampaign()" style="flex:1;background:var(--fci-navy);color:#fff;border:none;border-radius:8px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">Save Changes</button>
+        <button onclick="document.getElementById('admin-edit-cam-overlay').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
