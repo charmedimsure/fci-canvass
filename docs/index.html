@@ -2216,9 +2216,23 @@ let ALL_VOTERS_RAW = [];   // populated by loadVotersFromAPI()
 
 function voterFromAPI(v){
   // Immediately exclude R donors and registered Republicans at the source
-  // so they can never appear anywhere in the app
   if((v.party||v.pty||'').toUpperCase() === 'R') return null;
   if(v.donations && v.donations.some(d => d.lean === 'R')) return null;
+  // Exclude households where ALL individual members are R or non-voters with no affiliation
+  try {
+    const vnsArr0 = typeof v.vns === 'string' ? JSON.parse(v.vns||'[]') : (v.vns||[]);
+    if(vnsArr0.length > 0){
+      const allR = vnsArr0.every(m => {
+        const indParty = Array.isArray(m) ? (m[4]||'').toUpperCase() : '';
+        const indLP    = Array.isArray(m) ? (m[5]||'').toUpperCase() : '';
+        const indVotes = Array.isArray(m) ? (m[6]||0) : 0;
+        return indParty === 'R'
+            || indLP === 'R'
+            || (indVotes === 0 && !indParty && !indLP);
+      });
+      if(allR) return null;
+    }
+  } catch(e){}
   // v comes from D1 — decode compressed field names to what the app expects
   // vns is stored as JSON string array of [firstName, lastName] pairs
   let vnsArr = [];
@@ -5360,6 +5374,40 @@ function showMailLabelsOverlay(voterList){
     }
 
     if(_mqMailMode === 'household'){
+      // Large households (nursing homes, assisted living > 5 members) → one label per individual
+      const hhSize = parseInt(v.hh) || (v.voters ? v.voters.length : 0) || 1;
+      if(hhSize > 5){
+        const vnsArr2 = v.vns ? (typeof v.vns === 'string' ? JSON.parse(v.vns) : v.vns) : [];
+        const members2 = v.voters && v.voters.length ? v.voters : vnsArr2;
+        for(const m2 of members2){
+          let fn='', ln='', age2=null, po2=false, indParty2='', indLP2='';
+          if(Array.isArray(m2)){
+            fn=m2[0]||''; ln=m2[1]||''; age2=m2[2]; po2=m2[3]||false;
+            indParty2=(m2[4]||'').toUpperCase(); indLP2=(m2[5]||'').toUpperCase();
+          } else {
+            const p2=(m2.name||'').trim().split(' ');
+            fn=p2[0]||''; ln=p2.slice(1).join(' ')||'';
+            age2=m2.age; po2=m2.presOnly||false;
+          }
+          if(indParty2==='R'||indLP2==='R') continue;
+          if(_mqScore && _mqScore !== 'all'){
+            const s2=autoScoreIndividual(v.party,v.voting,v.lastPrimary,v.specialsVoted,v.donations,po2,Array.isArray(m2)?m2:null);
+            if(_mqScore==='strong'&&s2!=='strong') continue;
+            if(_mqScore==='leans'&&s2!=='leans') continue;
+            if(_mqScore==='leansstrong'&&s2!=='strong'&&s2!=='leans') continue;
+          }
+          const memberName=`${fn} ${ln}`.trim()||'Resident';
+          const dataIdx2=_labelData.length;
+          _labelData.push({v,first:fn||'Resident',last:ln||'',age:age2,presOnly:po2});
+          labelCards.push(
+            `<div class="label-card" data-lid="${dataIdx2}" onclick="showLabelHistory(${dataIdx2})" style="cursor:pointer;">`
+            +`<div class="lc-name">${memberName}</div>`
+            +`<div class="lc-addr">${line1}${line2?'<br>'+line2:''}</div>`
+            +`</div>`
+          );
+        }
+        continue;
+      }
       // ONE label per household — but only include members who match the score filter
       // Score each individual member and filter to qualifying ones only
       const vnsArr = v.vns ? (typeof v.vns === 'string' ? JSON.parse(v.vns) : v.vns) : [];
