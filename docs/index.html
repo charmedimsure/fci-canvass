@@ -7140,12 +7140,45 @@ async function volPickCampaign(camId){
 
   volunteerCampaignId = camId;
   campaignFocusAreas = cam.focusAreas || {};
+  candidateSession = cam;  // needed so showMailQtyPicker can read fa.score
 
   // Hide start screen, show loading while we fetch voters
   document.getElementById('vol-start-overlay').style.display='none';
 
   // Fetch voters from API filtered to this campaign's district/city
   await loadVotersFromAPI(cam.focusAreas || {});
+
+  // Pull contacts from D1 and remove already-contacted voters immediately
+  try {
+    const contactRes = await apiGet('/api/contacts/' + encodeURIComponent(camId));
+    if(contactRes && contactRes.contacts && contactRes.contacts.length){
+      const contactedIds = new Set(
+        contactRes.contacts
+          .filter(c => c.contact_status === 'contacted')
+          .map(c => String(c.voter_id))
+      );
+      if(contactedIds.size > 0){
+        const before = ALL_VOTERS_RAW.length;
+        ALL_VOTERS_RAW = ALL_VOTERS_RAW.filter(v => !contactedIds.has(String(v.id)));
+        const removed = before - ALL_VOTERS_RAW.length;
+        if(removed > 0) console.log(`[contacts] Excluded ${removed} previously contacted voters`);
+      }
+      // Also save to localStorage for offline use
+      const stateObj = {};
+      contactRes.contacts.forEach(c => {
+        stateObj[c.voter_id] = {
+          contactStatus: c.contact_status,
+          contactReason: c.contact_reason,
+          yardSign: !!c.yard_sign,
+          notes: c.notes || '',
+          spokeWith: JSON.parse(c.spoke_with||'[]'),
+        };
+      });
+      try { localStorage.setItem(CONTACT_STORE_PREFIX + camId, JSON.stringify(stateObj)); } catch(e){}
+    }
+  } catch(e) {
+    console.warn('Could not load contacts from API:', e);
+  }
 
   // Load and apply any prior contact state for this campaign
   _postRenderContactState = loadContactState(camId);
@@ -7572,8 +7605,14 @@ async function _pushContactsToAPI(camId){
   const state = buildContactState();
   const updates = Object.entries(state).map(([id,s])=>({...s, id, updatedBy:_adminEmail||'volunteer'}));
   if(!updates.length) return;
-  try{ await apiPost('/api/contacts/'+encodeURIComponent(camId), updates); }
-  catch(e){ console.warn('Contact push fail:', e); }
+  _setSyncBadge('syncing','Syncing…');
+  try{
+    await apiPost('/api/contacts/'+encodeURIComponent(camId), updates);
+    _setSyncBadge('ok','Synced ✓');
+  } catch(e){
+    console.warn('Contact push fail:', e);
+    _setSyncBadge('err','Sync failed');
+  }
 }
 
 function _setSyncBadge(state, label){
@@ -7616,9 +7655,21 @@ async function _pullContactsFromAPI(camId){
 
     applyToList(voters);
     applyToList(mailList);
-    if(typeof renderWalk === 'function') renderWalk();  // refresh walk UI
-    if(typeof renderMail === 'function') renderMail(); // refresh mail UI if active
-  } catch(e){ console.warn('Contact pull fail:', e); }
+
+    // Remove contacted voters from active lists so they don't get double-contacted
+    const contactedIds = new Set(
+      r.contacts.filter(c=>c.contact_status==='contacted').map(c=>String(c.voter_id))
+    );
+    if(contactedIds.size){
+      voters       = voters.filter(v=>!contactedIds.has(String(v.id)));
+      mailList     = mailList.filter(v=>!contactedIds.has(String(v.id)));
+      ALL_VOTERS_RAW = ALL_VOTERS_RAW.filter(v=>!contactedIds.has(String(v.id)));
+    }
+
+    if(typeof renderWalk === 'function') renderWalk();
+    if(typeof renderMail === 'function') renderMail();
+    _setSyncBadge('ok','Synced ✓');
+  } catch(e){ console.warn('Contact pull fail:', e); _setSyncBadge('err','Sync failed'); }
 }
 
 function startContactSync(camId){
