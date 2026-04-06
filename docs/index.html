@@ -5376,7 +5376,9 @@ function showMailLabelsOverlay(voterList){
     if(_mqMailMode === 'household'){
       // Large households (nursing homes, assisted living > 5 members) → one label per individual
       const hhSize = parseInt(v.hh) || (v.voters ? v.voters.length : 0) || 1;
-      if(hhSize > 5){
+      // Skip mailOnly addresses with no lot number — undeliverable trailer park catch-alls
+      if(v.mailOnly && !/\bLOT\b/i.test(v.address || v.a || '')) continue;
+      if(hhSize > 4){
         const vnsArr2 = v.vns ? (typeof v.vns === 'string' ? JSON.parse(v.vns) : v.vns) : [];
         const members2 = v.voters && v.voters.length ? v.voters : vnsArr2;
         for(const m2 of members2){
