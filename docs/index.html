@@ -3059,7 +3059,8 @@ function autoScoreIndividual(party, voting, lastPrimary, specialsVoted, donation
   // Use individual party/lastPrimary from vns if available (index 4,5,6)
   let indParty = party, indLastPrimary = lastPrimary, indVoting = voting;
   if(Array.isArray(vnEntry) && vnEntry.length >= 5){
-    if(vnEntry[4]) indParty = vnEntry[4];
+    // Always use individual party — empty string means NP (no party), not fall back to household
+    indParty = vnEntry[4] || '';
     if(vnEntry[5] !== undefined) indLastPrimary = vnEntry[5];
     if(vnEntry[6] !== undefined) indVoting = String(vnEntry[6]);
   }
