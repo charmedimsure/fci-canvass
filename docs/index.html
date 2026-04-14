@@ -2925,8 +2925,8 @@ function applyFilters(voterList){
     list = list.filter(v => {
       const cd = String(v.congDist || v.cong_dist || '').toUpperCase();
       if(cd && !cd.includes('12')) return false; // definitely not CD12
-      const cn = String(v.countyNum || '').trim();
-      if(!cn) return false; // no county data — skip
+      // Default missing countyNum to '23' (Fairfield) — all currently migrated voters are Fairfield
+      const cn = String(v.countyNum || '23').trim();
       return _cd12Counties.includes(cn);
     });
   }
@@ -5957,10 +5957,15 @@ async function runMailCanvass(){
         if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
         if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
         if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
-        // HD-69 and CD-12 span multiple counties — no county filter
+        // HD-69 and CD-12 span multiple counties
         const _crossCounty = (filterField === 'congDist') ||
                              (filterField === 'stHouse' && filterDistrict === '69');
-        if(!_crossCounty) fetchParams.county_num = '23';
+        if(!_crossCounty){
+          fetchParams.county_num = '23';
+        } else if(filterField === 'congDist' && _cd12Counties && _cd12Counties.length === 1){
+          // CD-12 with a single county selected — filter at DB level for performance
+          fetchParams.county_num = _cd12Counties[0];
+        }
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
         else if(areaField === 'st_house') fetchParams.st_house = areaValue;
@@ -6689,6 +6694,8 @@ function confirmCd12Counties(){
     if(c.classList.contains('sel')) _cd12Counties.push(c.dataset.cd12County);
   });
   if(!_cd12Counties.length){ toast('Select at least one county', true); return; }
+  // Clear cached voters so runMailCanvass re-fetches with correct county filter
+  ALL_VOTERS_RAW = [];
   document.getElementById('cd12-county-overlay').style.display = 'none';
   _openSimpleMailFilter();
 }
