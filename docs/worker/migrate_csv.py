@@ -523,13 +523,14 @@ def main():
         print(f"\nWould upload {len(records):,} records. Run without --dry-run to upload.")
         return
 
-    # ── Geocode all records via Census Geocoder ──────────────────────────────
+    # ── Geocode Fairfield County records only via Census Geocoder ───────────
     if not args.skip_geocode:
         geo_input = []
         for r in records:
-            # Parse address back into components for Census API
+            # Only geocode Fairfield County (county_num=23) — others are mail-only
+            if str(r.get('countyNum', r.get('county_num', ''))) != '23':
+                continue
             addr_full = r.get('a', '')
-            # Format: "123 MAIN ST, LANCASTER 43130"
             parts = addr_full.split(',')
             street = parts[0].strip() if parts else ''
             city_zip = parts[1].strip() if len(parts) > 1 else ''
@@ -538,12 +539,14 @@ def main():
             zipcode = city_parts[1].strip() if len(city_parts) > 1 else ''
             geo_input.append({'id': r['id'], 'address': street, 'city': city, 'state': 'OH', 'zip': zipcode})
 
+        fc_total = sum(1 for r in records if str(r.get('countyNum', r.get('county_num', ''))) == '23')
+        print(f"Geocoding {len(geo_input):,} Fairfield County records (skipping {len(records)-fc_total:,} out-of-county)...")
         geo_results = geocode_census_batch(geo_input)
         for r in records:
             if r['id'] in geo_results:
                 r['lat'], r['lon'] = geo_results[r['id']]
         geocoded = sum(1 for r in records if r.get('lat'))
-        print(f"Geocoded {geocoded:,}/{len(records):,} household records")
+        print(f"Geocoded {geocoded:,}/{fc_total:,} Fairfield County household records")
 
     upload_voters(records, args.url, args.key, args.admin_key, args.batch_size)
     print("\nNext step: run merge_donors.py to re-apply FEC donor data")

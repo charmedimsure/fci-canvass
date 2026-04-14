@@ -2925,8 +2925,8 @@ function applyFilters(voterList){
     list = list.filter(v => {
       const cd = String(v.congDist || v.cong_dist || '').toUpperCase();
       if(cd && !cd.includes('12')) return false; // definitely not CD12
-      // Default missing countyNum to '23' (Fairfield) — all currently migrated voters are Fairfield
-      const cn = String(v.countyNum || '23').trim();
+      const cn = String(v.countyNum || '').trim();
+      if(!cn) return false; // no county data — skip
       return _cd12Counties.includes(cn);
     });
   }
