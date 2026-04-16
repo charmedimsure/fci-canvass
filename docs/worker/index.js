@@ -261,8 +261,9 @@ async function getVoters(request, env) {
   const where  = [];
   const params = [];
 
-  if (p.get('st_house'))     { where.push("st_house = ?");     params.push(p.get('st_house')); }
-  if (p.get('st_senate'))    { where.push("st_senate = ?");    params.push(p.get('st_senate')); }
+  if (p.get('st_house'))      { where.push("st_house = ?");       params.push(p.get('st_house')); }
+  if (p.get('st_senate'))     { where.push("st_senate = ?");      params.push(p.get('st_senate')); }
+  if (p.get('precinct_name')) { where.push("precinct_name = ?");  params.push(p.get('precinct_name').toUpperCase()); }
   if (p.get('cong_dist'))    { where.push("cong_dist LIKE ?");    params.push('%' + p.get('cong_dist').replace(/[^0-9]/g,'') + '%'); }
   if (p.get('county_num'))   { where.push('county_num = ?');      params.push(p.get('county_num')); }
   if (p.get('municipality')) { where.push("municipality LIKE ?"); params.push('%' + p.get('municipality').replace(/ CITY$/i,'').trim() + '%'); }

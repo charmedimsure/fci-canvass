@@ -1333,6 +1333,10 @@ return{data:data,meta:{fields:hdrs}};}};</script>
             <button class="race-btn" data-race="State House of Representatives" data-field="stHouse" data-district="73" id="race-oh73">State House 73</button>
             <button class="race-btn" data-race="State House of Representatives" data-field="stHouse" data-district="69">State House 69</button>
           </div>
+          <div class="race-group-label">Democratic Party</div>
+          <div class="race-group" style="margin-bottom:10px;">
+            <button class="race-btn" id="cc-race-btn" data-race="Central Committee" data-field="precinctName" data-district="" onclick="openCcPrecinctPicker(this)">Central Committee</button>
+          </div>
           <div class="race-group-label">Fairfield County</div>
           <div class="race-group" style="margin-bottom:10px;">
             <button class="race-btn" data-race="County Commissioner" data-field="" data-district="">Commissioner</button>
@@ -1586,6 +1590,22 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 </div>
 
 <!-- MAIL FILTER OVERLAY -->
+<!-- CC PRECINCT SELECTION OVERLAY -->
+<div id="cc-precinct-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.7);display:none;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--surface);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;">
+    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px;">Select Precinct</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Choose the precinct you want to canvass for Central Committee</div>
+    <div style="font-size:11px;font-weight:700;color:var(--fci-red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">⚠️ Vacant Seats</div>
+    <div id="cc-precinct-vacant" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;overflow-y:auto;max-height:35vh;"></div>
+    <div style="font-size:11px;font-weight:700;color:var(--strong);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">✓ Filled Seats</div>
+    <div id="cc-precinct-filled" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;overflow-y:auto;max-height:20vh;"></div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="document.getElementById('cc-precinct-overlay').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:600;padding:12px;border-radius:10px;cursor:pointer;">Cancel</button>
+      <button onclick="confirmCcPrecinct()" style="flex:2;background:var(--fci-red);border:none;color:#fff;font-size:13px;font-weight:700;padding:12px;border-radius:10px;cursor:pointer;">Canvass This Precinct →</button>
+    </div>
+  </div>
+</div>
+
 <!-- CD12 COUNTY SELECTION OVERLAY -->
 <div id="cd12-county-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;width:100%;box-sizing:border-box;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 22px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;">
@@ -2518,25 +2538,25 @@ async function selectArea(btn){
       const fetchParams = {};
       // Door-to-door always scoped to Fairfield County regardless of race selected
       fetchParams.county_num = '23';
+      if(filterField === 'precinctName') fetchParams.precinct_name = filterDistrict.toUpperCase();
       if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
       else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
       else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-      if(!goto_skip_fetch){
-        const _r = await apiGet('/api/voters', fetchParams);
-        ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-          if((v.party||'').toUpperCase() === 'R') return false;
-          if(v.adminExclude) return false;
-          if(isRepDonor(v)) return false;
-          var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-          var recent = ['2024','2023','2022','2021','2020'];
-          var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-          if(!hasRecent) return false;
-          return true;
-        });
-      }
+      const _r = await apiGet('/api/voters', fetchParams);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
+    if((v.party||'').toUpperCase() === 'R') return false;
+    if(v.adminExclude) return false;
+    if(isRepDonor(v)) return false;
+    // Remove voters with no activity in last 5 years (2020-2024)
+    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
+    var recent = ['2024','2023','2022','2021','2020'];
+    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
+    return true;
+  });
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -5953,39 +5973,16 @@ async function runMailCanvass(){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
-      let goto_skip_fetch = false;
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
-        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
-        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
+        if(filterField === 'stHouse')    fetchParams.st_house     = filterDistrict;
+        if(filterField === 'stSenate')   fetchParams.st_senate    = filterDistrict;
+        if(filterField === 'congDist')   fetchParams.cong_dist    = filterDistrict;
+        if(filterField === 'precinctName') fetchParams.precinct_name = filterDistrict.toUpperCase();
+        // HD-69 and CD-12 span multiple counties — no county filter
         const _crossCounty = (filterField === 'congDist') ||
                              (filterField === 'stHouse' && filterDistrict === '69');
-        if(!_crossCounty){
-          fetchParams.county_num = '23';
-        } else if(filterField === 'congDist' && _cd12Counties && _cd12Counties.length > 0){
-          // CD-12: fetch each selected county separately and merge
-          const countiesToFetch = [..._cd12Counties];
-          showLoadingOverlay(`Loading voters from ${countiesToFetch.length} count${countiesToFetch.length===1?'y':'ies'}…`);
-          const allCountyVoters = [];
-          for(const cn of countiesToFetch){
-            try {
-              const _cr = await apiGet('/api/voters', {...fetchParams, county_num: cn});
-              allCountyVoters.push(...(_cr.voters || []));
-            } catch(e){ console.warn(`Failed to fetch county ${cn}:`, e); }
-          }
-          ALL_VOTERS_RAW = allCountyVoters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-            if((v.party||'').toUpperCase() === 'R') return false;
-            if(v.adminExclude) return false;
-            if(isRepDonor(v)) return false;
-            var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-            var recent = ['2024','2023','2022','2021','2020'];
-            return recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-          });
-          hideLoadingOverlay();
-          // Skip the normal single fetch below
-          goto_skip_fetch = true;
-        }
+        if(!_crossCounty) fetchParams.county_num = '23';
       } else {
         if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
         else if(areaField === 'st_house') fetchParams.st_house = areaValue;
@@ -5995,19 +5992,18 @@ async function runMailCanvass(){
         else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
         // Filter by district at DB level — fields now populated
       }
-      if(!goto_skip_fetch){
-        const _r = await apiGet('/api/voters', fetchParams);
-        ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-          if((v.party||'').toUpperCase() === 'R') return false;
-          if(v.adminExclude) return false;
-          if(isRepDonor(v)) return false;
-          var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-          var recent = ['2024','2023','2022','2021','2020'];
-          var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-          if(!hasRecent) return false;
-          return true;
-        });
-      }
+      const _r = await apiGet('/api/voters', fetchParams);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
+    if((v.party||'').toUpperCase() === 'R') return false;
+    if(v.adminExclude) return false;
+    if(isRepDonor(v)) return false;
+    // Remove voters with no activity in last 5 years (2020-2024)
+    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
+    var recent = ['2024','2023','2022','2021','2020'];
+    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
+    if(!hasRecent) return false; // no recent voting history (includes no history at all)
+    return true;
+  });
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -6706,6 +6702,66 @@ function resetMailToLevel(){
   if(body) body.querySelectorAll('.race-group-label,.race-group').forEach(el => el.style.display = '');
 }
 
+// ── CENTRAL COMMITTEE PRECINCT CANVASSING ────────────────────────────────────
+let _ccSelectedPrecinct = null;
+
+function openCcPrecinctPicker(btn){
+  // Build precinct list from CC_SEATS
+  const vacantDiv  = document.getElementById('cc-precinct-vacant');
+  const filledDiv  = document.getElementById('cc-precinct-filled');
+  vacantDiv.innerHTML = '';
+  filledDiv.innerHTML = '';
+
+  CC_SEATS.forEach(s => {
+    const chip = document.createElement('button');
+    chip.textContent = s.precinct;
+    chip.dataset.normalized = s.normalized;
+    chip.dataset.precinct = s.precinct;
+    chip.dataset.vacant = s.vacant ? '1' : '0';
+    chip.onclick = function(){
+      document.querySelectorAll('#cc-precinct-vacant .cc-p-chip, #cc-precinct-filled .cc-p-chip')
+        .forEach(c=>c.classList.remove('sel'));
+      chip.classList.add('sel');
+      _ccSelectedPrecinct = { precinct: s.precinct, normalized: s.normalized, vacant: s.vacant, member: s.member };
+    };
+    chip.className = 'cc-p-chip';
+    chip.style.cssText = 'background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;';
+    if(s.vacant){
+      vacantDiv.appendChild(chip);
+    } else {
+      filledDiv.appendChild(chip);
+    }
+  });
+
+  document.getElementById('cc-precinct-overlay').style.display = 'flex';
+}
+
+function confirmCcPrecinct(){
+  if(!_ccSelectedPrecinct){ toast('Select a precinct first', true); return; }
+  document.getElementById('cc-precinct-overlay').style.display = 'none';
+
+  // Set up canvass for this CC precinct
+  const s = _ccSelectedPrecinct;
+  canvassFor    = 'Central Committee — ' + s.precinct;
+  filterField   = 'precinctName';
+  filterDistrict = s.normalized;
+
+  // Update race button chip
+  document.querySelectorAll('.race-btn').forEach(b=>b.classList.remove('selected'));
+  const ccBtn = document.getElementById('cc-race-btn');
+  if(ccBtn) ccBtn.classList.add('selected');
+  wizCollapse('step-race','chip-race', canvassFor, 'change-race-btn');
+  wizShow('step-generate');
+  updateCanvassForPill();
+  updateGenerateBtn();
+
+  if(s.vacant){
+    toast('⚠️ This seat is VACANT — ask strong Dems if they'd like to run!');
+  } else {
+    toast(`Canvassing for Central Committee — ${s.precinct} (${s.member})`);
+  }
+}
+
 function toggleCd12County(btn){ btn.classList.toggle('sel'); }
 
 function confirmCd12Counties(){
@@ -6715,8 +6771,6 @@ function confirmCd12Counties(){
     if(c.classList.contains('sel')) _cd12Counties.push(c.dataset.cd12County);
   });
   if(!_cd12Counties.length){ toast('Select at least one county', true); return; }
-  // Clear cached voters so runMailCanvass re-fetches with correct county filter
-  ALL_VOTERS_RAW = [];
   document.getElementById('cd12-county-overlay').style.display = 'none';
   _openSimpleMailFilter();
 }
