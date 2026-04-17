@@ -122,10 +122,17 @@ function doVoterLookup(){
     .then(function(res){
       if(btn){ btn.textContent='Search →'; btn.disabled=false; }
       var found=(res.voters||[]).filter(function(v){
-        if((v.party||'').toUpperCase()==='R') return false;
-        if(v.donations && v.donations.some(function(d){ return d.lean==='R'; })) return false;
+        // Show ALL voters including excluded — mark reason in profile
         if(addr){ var a=(v.a||v.address||'').toUpperCase(); if(!a.includes(addr.toUpperCase())) return false; }
         return true;
+      }).map(function(v){
+        // Tag exclusion reason for display
+        var reasons = [];
+        if((v.party||'').toUpperCase()==='R') reasons.push('Registered Republican');
+        if(v.donations && v.donations.some(function(d){ return d.lean==='R'; })) reasons.push('Republican donor');
+        if(v.adminExclude) reasons.push('Admin excluded');
+        v._excludedReason = reasons.length ? reasons.join(', ') : null;
+        return v;
       });
       var resultsEl=_el('vlookup-results');
       var countEl=_el('vlookup-count');
@@ -137,7 +144,8 @@ function doVoterLookup(){
         return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;cursor:pointer;margin-bottom:6px;" data-vlookup-id="'+(v.id||'')+'" onclick="vlookupOpenProfile(this.dataset.vlookupId)">'
           +'<div style="font-weight:700;color:var(--text);">'+(v.name||v.n||'')+'</div>'
           +'<div style="font-size:12px;color:var(--text-muted);">'+(v.address||v.a||'')+'</div>'
-          +'<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">'+(v.party==='D'?'Democrat':v.party||'NP')+'</div>'
+          +(v._excludedReason?'<div style="font-size:11px;color:var(--danger);font-weight:600;margin-top:4px;">⚠️ Excluded: '+v._excludedReason+'</div>':'')
+          +'<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">'+(v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'NP')+'</div>'
           +'</div>';
       }).join('');
       if(resultsEl) resultsEl.style.display='block';
@@ -1333,10 +1341,6 @@ return{data:data,meta:{fields:hdrs}};}};</script>
             <button class="race-btn" data-race="State House of Representatives" data-field="stHouse" data-district="73" id="race-oh73">State House 73</button>
             <button class="race-btn" data-race="State House of Representatives" data-field="stHouse" data-district="69">State House 69</button>
           </div>
-          <div class="race-group-label">Democratic Party</div>
-          <div class="race-group" style="margin-bottom:10px;">
-            <button class="race-btn" id="cc-race-btn" data-race="Central Committee" data-field="precinctName" data-district="" onclick="openCcPrecinctPicker(this)">Central Committee</button>
-          </div>
           <div class="race-group-label">Fairfield County</div>
           <div class="race-group" style="margin-bottom:10px;">
             <button class="race-btn" data-race="County Commissioner" data-field="" data-district="">Commissioner</button>
@@ -1590,22 +1594,6 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 </div>
 
 <!-- MAIL FILTER OVERLAY -->
-<!-- CC PRECINCT SELECTION OVERLAY -->
-<div id="cc-precinct-overlay" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.7);display:none;align-items:flex-end;justify-content:center;">
-  <div style="background:var(--surface);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;">
-    <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px;">Select Precinct</div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Choose the precinct you want to canvass for Central Committee</div>
-    <div style="font-size:11px;font-weight:700;color:var(--fci-red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">⚠️ Vacant Seats</div>
-    <div id="cc-precinct-vacant" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;overflow-y:auto;max-height:35vh;"></div>
-    <div style="font-size:11px;font-weight:700;color:var(--strong);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">✓ Filled Seats</div>
-    <div id="cc-precinct-filled" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;overflow-y:auto;max-height:20vh;"></div>
-    <div style="display:flex;gap:10px;">
-      <button onclick="document.getElementById('cc-precinct-overlay').style.display='none'" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:600;padding:12px;border-radius:10px;cursor:pointer;">Cancel</button>
-      <button onclick="confirmCcPrecinct()" style="flex:2;background:var(--fci-red);border:none;color:#fff;font-size:13px;font-weight:700;padding:12px;border-radius:10px;cursor:pointer;">Canvass This Precinct →</button>
-    </div>
-  </div>
-</div>
-
 <!-- CD12 COUNTY SELECTION OVERLAY -->
 <div id="cd12-county-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;width:100%;box-sizing:border-box;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 22px;max-width:440px;width:100%;max-height:90vh;overflow-y:auto;">
@@ -1691,10 +1679,24 @@ return{data:data,meta:{fields:hdrs}};}};</script>
           <button class="mf-chip" data-donor-district="CD12" onclick="mfPickDonorDistrict(this)">CD-12 (Congress)</button>
         </div>
       </div>
-      <div class="mf-sub-panel show" id="mf-donor-org-panel" style="margin-top:8px;">
-        <div class="mf-label" style="margin-bottom:6px;">Filter by organization (optional — select none for all)</div>
-        <div id="mf-donor-org-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;">
-          <div style="font-size:11px;color:var(--text-muted);font-style:italic;">Loading organizations…</div>
+      <div class="mf-sub-panel show" id="mf-donor-org-panel" style="margin-top:8px;display:none;">
+        <div id="mf-donor-org-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- DONATION ORG FILTER — visible to all canvassers -->
+    <div class="mf-section" id="mf-org-section">
+      <div class="mf-toggle-row">
+        <label class="mf-toggle" for="mf-org-toggle">
+          <input type="checkbox" id="mf-org-toggle" onchange="mfToggleOrgFilter(this)">
+          <span class="mf-toggle-slider"></span>
+        </label>
+        <span class="mf-toggle-label">Filter by Donation Organization</span>
+      </div>
+      <div class="mf-sub-panel" id="mf-org-panel" style="display:none;margin-top:8px;">
+        <div class="mf-label" style="margin-bottom:6px;">Show only voters who donated to selected organizations</div>
+        <div id="mf-org-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;">
+          <div style="font-size:11px;color:var(--text-muted);font-style:italic;">Load voters to see organizations…</div>
         </div>
       </div>
     </div>
@@ -2538,7 +2540,6 @@ async function selectArea(btn){
       const fetchParams = {};
       // Door-to-door always scoped to Fairfield County regardless of race selected
       fetchParams.county_num = '23';
-      if(filterField === 'precinctName') fetchParams.precinct_name = filterDistrict.toUpperCase();
       if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
       else if(areaField === 'st_senate') fetchParams.st_senate = areaValue;
@@ -4711,6 +4712,25 @@ function openModal(id){
   contactInfoEl.textContent = contactParts.join('  ·  ');
   contactInfoEl.style.display = contactParts.length ? '' : 'none';
   document.getElementById('m-party').textContent=v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'—';
+  // Show exclusion reason if voter is excluded from canvassing
+  let excludeBanner = document.getElementById('m-exclude-banner');
+  if(!excludeBanner){
+    excludeBanner = document.createElement('div');
+    excludeBanner.id = 'm-exclude-banner';
+    excludeBanner.style.cssText = 'margin:8px 0 0;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:8px;font-size:11px;font-weight:700;color:var(--danger);display:none;';
+    document.getElementById('m-addr').parentElement.insertAdjacentElement('afterend', excludeBanner);
+  }
+  const excludeReasons = [];
+  if((v.party||'').toUpperCase()==='R') excludeReasons.push('Registered Republican');
+  else if(v._excludedReason) excludeReasons.push(v._excludedReason);
+  if(v.donations && v.donations.some(d=>d.lean==='R')) excludeReasons.push('Republican donor');
+  if(v.adminExclude) excludeReasons.push('Admin excluded');
+  if(excludeReasons.length){
+    excludeBanner.textContent = '⚠️ Excluded from canvassing: ' + excludeReasons.join(', ');
+    excludeBanner.style.display = '';
+  } else {
+    excludeBanner.style.display = 'none';
+  }
   document.getElementById('m-ages').textContent=v.ages ? v.ages.split(',').join(', ') : '—';
   const _precEl = document.getElementById('m-precinct');
   if(_precEl) _precEl.textContent = v.precinctName || v.precinct || '—';
@@ -5776,6 +5796,36 @@ function mfToggleDonorOrg(btn){
     .map(b => b.dataset.orgName);
 }
 
+function mfToggleOrgFilter(input){
+  document.getElementById('mf-org-panel').style.display = input.checked ? '' : 'none';
+  if(input.checked) _populateOrgChips();
+}
+
+function _populateOrgChips(){
+  const container = document.getElementById('mf-org-chips');
+  if(!container) return;
+  // Get orgs from ALL_VOTERS_RAW donations
+  const orgMap = new Map();
+  (ALL_VOTERS_RAW || []).forEach(v => {
+    (v.donations || []).forEach(d => {
+      if(d.committee && d.lean !== 'R'){
+        orgMap.set(d.committee, (orgMap.get(d.committee)||0)+1);
+      }
+    });
+  });
+  if(!orgMap.size){ container.innerHTML='<div style="font-size:11px;color:var(--text-muted);font-style:italic;">No donation data available</div>'; return; }
+  container.innerHTML = [...orgMap.entries()]
+    .sort((a,b)=>b[1]-a[1])
+    .map(([org,cnt])=>`<button class="mf-chip" data-org="${org}" onclick="this.classList.toggle('sel')">${org} (${cnt})</button>`)
+    .join('');
+}
+
+// Read org filter selections (from new standalone section)
+function _getMailOrgFilter(){
+  const chips = document.querySelectorAll('#mf-org-chips .mf-chip.sel');
+  return [...chips].map(b=>b.dataset.org).filter(Boolean);
+}
+
 function _populateDonorOrgChips(){
   const container = document.getElementById('mf-donor-org-chips');
   if(!container) return;
@@ -5942,10 +5992,18 @@ function applyMailFiltersToVoters(vlist){
     }
     // Donor filter
     if(mailSortDonors && !(v.donations && v.donations.length)) return false;
-    // Org filter — if specific orgs selected, voter must have donated to at least one
-    if(mailSortDonors && mailFilterDonorOrgs.length){
+    // Org filter — from standalone org section (all canvassers)
+    const _activeOrgFilter = _getMailOrgFilter ? _getMailOrgFilter() : [];
+    if(_activeOrgFilter.length){
       const voterOrgs = (v.donations||[]).map(d=>(d.committee||'').trim());
-      if(!mailFilterDonorOrgs.some(org => voterOrgs.includes(org))) return false;
+      if(!voterOrgs.length) return false;
+      if(!_activeOrgFilter.some(org => voterOrgs.includes(org))) return false;
+    }
+    // Org filter — donor mode org filter
+    if(mailFilterDonorOrgs.length){
+      const voterOrgs2 = (v.donations||[]).map(d=>(d.committee||'').trim());
+      if(!voterOrgs2.length) return false;
+      if(!mailFilterDonorOrgs.some(org => voterOrgs2.includes(org))) return false;
     }
     // Ward filter — must have a ward AND it must match the selected ward(s)
     if(!mailSortDonors && mailFilterWards.length){
@@ -5975,10 +6033,9 @@ async function runMailCanvass(){
       const fetchParams = {};
       // Mail mode: race picker sets filterField/filterDistrict — use them as primary fetch params
       if(canvassMode === 'mail'){
-        if(filterField === 'stHouse')    fetchParams.st_house     = filterDistrict;
-        if(filterField === 'stSenate')   fetchParams.st_senate    = filterDistrict;
-        if(filterField === 'congDist')   fetchParams.cong_dist    = filterDistrict;
-        if(filterField === 'precinctName') fetchParams.precinct_name = filterDistrict.toUpperCase();
+        if(filterField === 'stHouse')  fetchParams.st_house  = filterDistrict;
+        if(filterField === 'stSenate') fetchParams.st_senate = filterDistrict;
+        if(filterField === 'congDist') fetchParams.cong_dist = filterDistrict;
         // HD-69 and CD-12 span multiple counties — no county filter
         const _crossCounty = (filterField === 'congDist') ||
                              (filterField === 'stHouse' && filterDistrict === '69');
@@ -6045,6 +6102,7 @@ async function runMailCanvass(){
   }
   // Pre-populate donor org chips now that voters are loaded
   _populateDonorOrgChips();
+  if(document.getElementById('mf-org-toggle')?.checked) _populateOrgChips();
 
   // Re-apply latest contact state from localStorage (catches contacts from other sessions)
   if(volunteerCampaignId){
@@ -6700,66 +6758,6 @@ function resetMailToLevel(){
   canvassFor = ''; filterField = ''; filterDistrict = '';
   const body = document.getElementById('body-race');
   if(body) body.querySelectorAll('.race-group-label,.race-group').forEach(el => el.style.display = '');
-}
-
-// ── CENTRAL COMMITTEE PRECINCT CANVASSING ────────────────────────────────────
-let _ccSelectedPrecinct = null;
-
-function openCcPrecinctPicker(btn){
-  // Build precinct list from CC_SEATS
-  const vacantDiv  = document.getElementById('cc-precinct-vacant');
-  const filledDiv  = document.getElementById('cc-precinct-filled');
-  vacantDiv.innerHTML = '';
-  filledDiv.innerHTML = '';
-
-  CC_SEATS.forEach(s => {
-    const chip = document.createElement('button');
-    chip.textContent = s.precinct;
-    chip.dataset.normalized = s.normalized;
-    chip.dataset.precinct = s.precinct;
-    chip.dataset.vacant = s.vacant ? '1' : '0';
-    chip.onclick = function(){
-      document.querySelectorAll('#cc-precinct-vacant .cc-p-chip, #cc-precinct-filled .cc-p-chip')
-        .forEach(c=>c.classList.remove('sel'));
-      chip.classList.add('sel');
-      _ccSelectedPrecinct = { precinct: s.precinct, normalized: s.normalized, vacant: s.vacant, member: s.member };
-    };
-    chip.className = 'cc-p-chip';
-    chip.style.cssText = 'background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;cursor:pointer;';
-    if(s.vacant){
-      vacantDiv.appendChild(chip);
-    } else {
-      filledDiv.appendChild(chip);
-    }
-  });
-
-  document.getElementById('cc-precinct-overlay').style.display = 'flex';
-}
-
-function confirmCcPrecinct(){
-  if(!_ccSelectedPrecinct){ toast('Select a precinct first', true); return; }
-  document.getElementById('cc-precinct-overlay').style.display = 'none';
-
-  // Set up canvass for this CC precinct
-  const s = _ccSelectedPrecinct;
-  canvassFor    = 'Central Committee — ' + s.precinct;
-  filterField   = 'precinctName';
-  filterDistrict = s.normalized;
-
-  // Update race button chip
-  document.querySelectorAll('.race-btn').forEach(b=>b.classList.remove('selected'));
-  const ccBtn = document.getElementById('cc-race-btn');
-  if(ccBtn) ccBtn.classList.add('selected');
-  wizCollapse('step-race','chip-race', canvassFor, 'change-race-btn');
-  wizShow('step-generate');
-  updateCanvassForPill();
-  updateGenerateBtn();
-
-  if(s.vacant){
-    toast('⚠️ This seat is VACANT — ask strong Dems if they\'d like to run!');
-  } else {
-    toast(`Canvassing for Central Committee — ${s.precinct} (${s.member})`);
-  }
 }
 
 function toggleCd12County(btn){ btn.classList.toggle('sel'); }
