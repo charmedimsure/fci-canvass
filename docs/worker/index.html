@@ -1404,6 +1404,16 @@ return{data:data,meta:{fields:hdrs}};}};</script>
 
       <!-- GENERATE -->
       <div id="step-generate" style="display:none;">
+        <!-- Party filter -->
+        <div id="door-party-filter" style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Exclude by Party?</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button class="party-excl-btn" data-party="R" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔴 Exclude Republicans</button>
+            <button class="party-excl-btn" data-party="D" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔵 Exclude Democrats</button>
+            <button class="party-excl-btn" data-party="U" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⬜ Exclude Unknown</button>
+          </div>
+        </div>
+
         <!-- Door-to-door score filter (hidden for mail mode) -->
         <div id="door-score-filter" style="margin-bottom:14px;">
           <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Include which voters?</div>
@@ -2917,13 +2927,18 @@ function applyFilters(voterList){
     });
   }
 
-  // Always exclude Republican donors, registered Republicans, and R-primary-only voters
+  // Apply party exclusion filter (user-controlled via party filter buttons)
+  // Always exclude hardcore R donors/registered R unless user explicitly includes them
   const beforeExclusion = list.length;
-  list = list.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v));
-  if(beforeExclusion > list.length){
-    const excluded = beforeExclusion - list.length;
-    setTimeout(()=>toast(`${list.length.toLocaleString()} voters (${excluded} R donors/registered R excluded)`), 400);
-  } else if(list.length < voterList.length){
+  list = list.filter(v => {
+    if(isPartyExcluded(v)) return false;
+    // If user hasn't explicitly chosen to include Republicans, still exclude hard-R
+    if(!_partyExcludes.has('D') && !_partyExcludes.has('U') && _partyExcludes.size === 0){
+      if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
+    }
+    return true;
+  });
+  if(list.length < voterList.length){
     setTimeout(()=>toast(`${list.length.toLocaleString()} voters match your selection`), 400);
   }
   return list;
@@ -3246,6 +3261,38 @@ function adaptiveThreshold(pts){
   return Math.max(0.05, Math.min(0.25, median*2));
 }
 
+// Party exclude filter state
+let _partyExcludes = new Set(); // empty = exclude nobody
+
+function togglePartyExclude(btn){
+  const party = btn.dataset.party;
+  if(_partyExcludes.has(party)){
+    _partyExcludes.delete(party);
+    btn.style.background = 'var(--surface2)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--text)';
+  } else {
+    _partyExcludes.add(party);
+    btn.style.background = '#dc2626';
+    btn.style.borderColor = '#dc2626';
+    btn.style.color = '#fff';
+    if(party === 'D'){ btn.style.background='#1d4ed8'; btn.style.borderColor='#1d4ed8'; }
+    if(party === 'U'){ btn.style.background='#6b7280'; btn.style.borderColor='#6b7280'; }
+  }
+}
+
+function isPartyExcluded(v){
+  if(!_partyExcludes.size) return false;
+  const p = (v.party || '').toUpperCase();
+  const isDem = p === 'D';
+  const isRep = p === 'R';
+  const isUnknown = !isDem && !isRep;
+  if(_partyExcludes.has('D') && isDem) return true;
+  if(_partyExcludes.has('R') && isRep) return true;
+  if(_partyExcludes.has('U') && isUnknown) return true;
+  return false;
+}
+
 // Door-to-door score filter state
 let _doorScores = new Set(['strong','leans']); // default: strong + leans
 
@@ -3275,7 +3322,7 @@ function clusterVoters(vl){
   // Also treat LOT address voters as mail-only (trailer park residents)
   const isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
   const mailOnlyList = vl.filter(v => v.mailOnly || isLotAddr(v));
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly && !isLotAddr(v));
+  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly && !isLotAddr(v) && !isPartyExcluded(v));
 
   // Apply door-to-door score filter — include household if ANY member matches
   const scoreFiltered = vl.filter(v => {
@@ -6030,11 +6077,12 @@ function mqPickScore(btn){
 }
 
 function _mqScoreFiltered(){
-  if(_mqScore === 'all') return _mqPendingList;
-  if(_mqScore === 'strong') return _mqPendingList.filter(v=>v.score==='strong');
-  if(_mqScore === 'leans')  return _mqPendingList.filter(v=>v.score==='leans');
-  if(_mqScore === 'leansstrong') return _mqPendingList.filter(v=>v.score==='strong'||v.score==='leans');
-  return _mqPendingList;
+  const partyFiltered = _mqPendingList.filter(v => !isPartyExcluded(v));
+  if(_mqScore === 'all') return partyFiltered;
+  if(_mqScore === 'strong') return partyFiltered.filter(v=>v.score==='strong');
+  if(_mqScore === 'leans')  return partyFiltered.filter(v=>v.score==='leans');
+  if(_mqScore === 'leansstrong') return partyFiltered.filter(v=>v.score==='strong'||v.score==='leans');
+  return partyFiltered;
 }
 
 function _mqTotalIndiv(list){

@@ -275,13 +275,10 @@ async function getVoters(request, env) {
   if (p.get('last_name'))    { where.push("data LIKE ?"); params.push('%' + p.get('last_name').toUpperCase() + '%'); }
   if (p.get('first_name'))   { where.push("data LIKE ?"); params.push('%\"' + p.get('first_name').toUpperCase() + '%'); }
 
-  where.push("party != 'R'");
-  const whereSQL = 'WHERE ' + where.join(' AND ');
+  const whereSQL = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const limit    = Math.min(parseInt(p.get('limit') || '60000'), 60000);
   const offset   = parseInt(p.get('offset') || '0');
-  // Always exclude registered Republicans
-  where.push("party != 'R'");
-  const whereSQL2 = 'WHERE ' + where.join(' AND ');
+  const whereSQL2 = whereSQL;
   const sql      = `SELECT data FROM voters ${whereSQL2} LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
