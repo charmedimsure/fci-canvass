@@ -2370,7 +2370,7 @@ function renderFroMap(){
   if(froMapInstance){ froMapInstance.remove(); froMapInstance=null; }
   const mapEl = document.getElementById('fro-map');
   froMapInstance = L.map(mapEl, {zoomControl:true});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(froMapInstance);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(froMapInstance);
   const color = CLUSTER_COLORS[selectedRoute % CLUSTER_COLORS.length];
   const pts = cl.filter(v=>v.lat&&v.lon);
   if(pts.length > 1) L.polyline(pts.map(v=>[v.lat,v.lon]),{color,weight:3,opacity:.7,dashArray:'6,4'}).addTo(froMapInstance);
@@ -3379,7 +3379,7 @@ function renderMap(){
   }
   if(map){map.remove();map=null;} markers={};
   map=L.map('map',{zoomControl:true});
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
   setTimeout(()=>map.invalidateSize(),100);
   const placed=[];
   walkClusters.forEach((cl,ci)=>{
@@ -8216,7 +8216,10 @@ function candidateLogout(){
   toast('Logged out');
 }
 
-function openCandidateDash(){
+// Stores all D1 contacts fetched for the current candidate dash view
+let _dashAllContacts = [];
+
+async function openCandidateDash(){
   const ol = document.getElementById('cand-dash-overlay');
   ol.style.display='flex';
   document.getElementById('dash-cand-name').textContent=candidateSession.name + ' — Campaign Dashboard';
@@ -8230,23 +8233,6 @@ function openCandidateDash(){
   }
   seatEl.textContent = candidateSession.seat || '';
 
-  // Render stats
-  const allVoters = [...voters, ...mailList.filter(v=>!voters.find(w=>w.id===v.id))];
-  const contacted = allVoters.filter(v=>v.contactStatus==='contacted');
-  const ys = allVoters.filter(v=>v.yardSign);
-  const statsEl = document.getElementById('dash-stats');
-  statsEl.innerHTML = [
-    ['Total Voters', allVoters.length, ''],
-    ['Contacted', contacted.length, '#34d399'],
-    ['Not Home', allVoters.filter(v=>v.contactReason==='Not home').length, '#94a3b8'],
-    ['Yard Signs', ys.length, '#fbbf24'],
-    ['Strong', allVoters.filter(v=>v.score==='strong').length, '#34d399'],
-    ['Leans', allVoters.filter(v=>v.score==='leans').length, '#fbbf24'],
-  ].map(([lbl,val,col])=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-    <div style="font-size:22px;font-weight:700;color:${col||'var(--text)'};">${val}</div>
-    <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${lbl}</div>
-  </div>`).join('');
-
   // Restore focus area chip selections
   const fa = candidateSession.focusAreas||{};
   document.querySelectorAll('.dash-chip[data-focus-type]').forEach(b=>{
@@ -8255,7 +8241,6 @@ function openCandidateDash(){
   });
   document.getElementById('dash-message').value=candidateSession.message||'';
   document.getElementById('dash-script').value=candidateSession.script||'';
-  // Restore age filters
   const ageMinEl = document.getElementById('dash-age-min');
   const ageMaxEl = document.getElementById('dash-age-max');
   if(ageMinEl) ageMinEl.value = fa.ageMin||'';
@@ -8269,7 +8254,6 @@ function openCandidateDash(){
       buildPrecintChips(fa.city);
       if(fa.precinct){
         setPrecictMode('pick');
-        // Select the saved precinct chip
         setTimeout(()=>{
           const saved = document.querySelector(`.prec-chip[data-prec-name="${fa.precinct}"]`);
           if(saved){ saved.classList.add('active'); }
@@ -8282,24 +8266,88 @@ function openCandidateDash(){
     }
   }
 
-  // Contacted list
+  // ── Fetch ALL contacts from D1 (not just current session) ──────────────────
   const listEl = document.getElementById('dash-contacted-list');
-  if(!contacted.length){ listEl.innerHTML='<div style="padding:8px 0;color:var(--text-muted);">No voters contacted yet</div>'; }
-  else {
-    listEl.innerHTML=contacted.map(v=>{
-      const spoke=(v.spokeWith&&v.spokeWith.length&&v.voters)
-        ? v.spokeWith.map(i=>{const p=v.voters[i];return Array.isArray(p)?p[0]+' '+p[1]:p;}).join(', ')
-        : '';
-      return `<div style="padding:7px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:8px;">
-        <div>
-          <div style="color:var(--text);font-weight:600;">${v.name}</div>
-          <div style="color:var(--text-muted);font-size:11px;">${v.address}</div>
-          ${spoke?`<div style="color:var(--accent);font-size:11px;">💬 ${spoke}</div>`:''}
+  listEl.innerHTML = '<div style="padding:8px 0;color:var(--text-muted);">Loading contacts from server…</div>';
+  const statsEl = document.getElementById('dash-stats');
+  statsEl.innerHTML = '';
+
+  let allContacts = [];
+  try {
+    const r = await apiGet('/api/contacts/' + encodeURIComponent(candidateSession.id), {});
+    allContacts = r.contacts || [];
+    _dashAllContacts = allContacts;
+  } catch(e) {
+    // Fallback to session data if API fails
+    const allVoters = [...voters, ...mailList.filter(v=>!voters.find(w=>w.id===v.id))];
+    allContacts = allVoters
+      .filter(v=>v.contactStatus==='contacted'||v.contactStatus==='not_contacted'||v.yardSign)
+      .map(v=>({
+        voter_id: v.id,
+        address: v.address||v.a,
+        contact_status: v.contactStatus,
+        contact_reason: v.contactReason,
+        yard_sign: v.yardSign,
+        notes: v.notes,
+        spoke_with: JSON.stringify(v.spokeWith||[]),
+        new_ally: v.newAlly,
+        score: v.score,
+      }));
+    _dashAllContacts = allContacts;
+  }
+
+  const contacted   = allContacts.filter(c => c.contact_status === 'contacted');
+  const notHome     = allContacts.filter(c => c.contact_reason === 'Not home');
+  const yardSigns   = allContacts.filter(c => c.yard_sign);
+  const newAllies   = allContacts.filter(c => c.new_ally);
+  const withNotes   = allContacts.filter(c => c.notes && c.notes.trim());
+
+  // Stats
+  statsEl.innerHTML = [
+    ['Contacted',   contacted.length,  '#34d399'],
+    ['Not Home',    notHome.length,    '#94a3b8'],
+    ['Yard Signs',  yardSigns.length,  '#fbbf24'],
+    ['New Allies',  newAllies.length,  '#818cf8'],
+    ['With Notes',  withNotes.length,  '#38bdf8'],
+    ['Total Stops', allContacts.length,''],
+  ].map(([lbl,val,col])=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+    <div style="font-size:22px;font-weight:700;color:${col||'var(--text)'};">${val}</div>
+    <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${lbl}</div>
+  </div>`).join('');
+
+  // Contact list — show all stops, sorted: notes first, then contacted, then not_contacted
+  if(!allContacts.length){
+    listEl.innerHTML='<div style="padding:8px 0;color:var(--text-muted);">No voters contacted yet.</div>';
+  } else {
+    const sorted = [...allContacts].sort((a,b)=>{
+      // Notes first
+      if((b.notes&&b.notes.trim())&&!(a.notes&&a.notes.trim())) return 1;
+      if((a.notes&&a.notes.trim())&&!(b.notes&&b.notes.trim())) return -1;
+      // Then contacted
+      if(b.contact_status==='contacted'&&a.contact_status!=='contacted') return 1;
+      if(a.contact_status==='contacted'&&b.contact_status!=='contacted') return -1;
+      return 0;
+    });
+
+    listEl.innerHTML = sorted.map(c=>{
+      const statusColor = c.contact_status==='contacted' ? 'var(--contacted)' : c.contact_status==='not_contacted' ? 'var(--danger)' : 'var(--text-muted)';
+      const statusLabel = c.contact_status==='contacted' ? '✓ Contacted' : c.contact_status==='not_contacted' ? '✗ Not home' : 'Pending';
+      const scoreColor  = c.score==='strong' ? 'var(--strong)' : c.score==='leans' ? 'var(--leans)' : 'var(--text-muted)';
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+          <div>
+            <div style="color:var(--text);font-weight:600;font-size:13px;">${c.address||'—'}</div>
+            ${c.spoke_with_names ? `<div style="color:var(--accent);font-size:11px;margin-top:2px;">💬 Spoke with: ${c.spoke_with_names}</div>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-size:11px;font-weight:700;color:${statusColor};">${statusLabel}</div>
+            ${c.score ? `<div style="font-size:10px;color:${scoreColor};">${c.score}</div>` : ''}
+            ${c.yard_sign ? '<div style="font-size:10px;color:var(--yard);">🪧 Yard sign</div>' : ''}
+            ${c.new_ally ? '<div style="font-size:10px;color:#818cf8;">⭐ New ally</div>' : ''}
+          </div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <span style="font-size:11px;color:var(--${v.score||'unknown'});">${v.score||'—'}</span>
-          ${v.yardSign?'<div style="font-size:10px;color:var(--yard);">🪧 Yard sign</div>':''}
-        </div>
+        ${c.notes && c.notes.trim() ? `<div style="margin-top:6px;padding:6px 10px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;font-size:11px;color:var(--text);line-height:1.5;">📝 ${c.notes.trim()}</div>` : ''}
+        ${c.contact_reason && c.contact_reason!=='Not home' ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">${c.contact_reason}</div>` : ''}
       </div>`;
     }).join('');
   }
@@ -8600,18 +8648,51 @@ function showSyncStatus(msg,type){
 
 function exportCandidateCSV(){
   if(!candidateSession) return;
-  const allVoters=[...voters,...mailList.filter(v=>!voters.find(w=>w.id===v.id))];
-  const contacted=allVoters.filter(v=>v.contactStatus==='contacted');
-  const hd=['Name','Address','Party','Score','Contact Status','Spoke With','Yard Sign','Notes'];
-  const rows=contacted.map(v=>{
-    const spoke=(v.spokeWith&&v.spokeWith.length&&v.voters)
-      ?v.spokeWith.map(i=>{const p=v.voters[i];return Array.isArray(p)?p[0]+' '+p[1]:p;}).join('; '):'';
-    return[`"${v.name}"`,`"${v.address}"`,v.party||'',v.score||'',v.contactStatus,`"${spoke}"`,v.yardSign?'yes':'no',`"${v.notes||''}"`].join(',');
-  });
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([[hd.join(','),...rows].join('\n')],{type:'text/csv'}));
-  a.download=`${candidateSession.id}_contacted_voters.csv`;
+
+  // Use D1 contacts if available, otherwise fall back to session data
+  let rows = [];
+  const hd = ['Address','Contact Status','Score','Yard Sign','New Ally','Contact Reason','Notes'];
+
+  if(_dashAllContacts && _dashAllContacts.length){
+    rows = _dashAllContacts.map(c=>{
+      const esc = s => '"' + (s||'').replace(/"/g,'""') + '"';
+      return [
+        esc(c.address||''),
+        c.contact_status||'pending',
+        c.score||'',
+        c.yard_sign ? 'yes' : 'no',
+        c.new_ally ? 'yes' : 'no',
+        esc(c.contact_reason||''),
+        esc(c.notes||''),
+      ].join(',');
+    });
+  } else {
+    // Fallback: session data only
+    const allVoters=[...voters,...mailList.filter(v=>!voters.find(w=>w.id===v.id))];
+    const contacted=allVoters.filter(v=>v.contactStatus==='contacted'||v.yardSign||v.newAlly);
+    rows = contacted.map(v=>{
+      const esc = s => '"' + (s||'').replace(/"/g,'""') + '"';
+      return [
+        esc(v.address||v.a||''),
+        v.contactStatus||'pending',
+        v.score||'',
+        v.yardSign?'yes':'no',
+        v.newAlly?'yes':'no',
+        esc(v.contactReason||''),
+        esc(v.notes||''),
+      ].join(',');
+    });
+  }
+
+  if(!rows.length){ toast('No canvass data to export yet', true); return; }
+
+  const date = new Date().toISOString().slice(0,10);
+  const csv  = [hd.join(','), ...rows].join('\n');
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `${candidateSession.id}_canvass_report_${date}.csv`;
   a.click();
+  toast('Downloading canvass report…');
 }
 
 // ── LOAD CANDIDATE SESSION ON STARTUP ─────────────────────────
