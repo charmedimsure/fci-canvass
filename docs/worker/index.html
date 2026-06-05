@@ -1406,11 +1406,12 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div id="step-generate" style="display:none;">
         <!-- Party filter -->
         <div id="door-party-filter" style="margin-bottom:14px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Exclude by Party?</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Party</div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            <button class="party-excl-btn" data-party="R" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔴 Exclude Republicans</button>
-            <button class="party-excl-btn" data-party="D" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔵 Exclude Democrats</button>
-            <button class="party-excl-btn" data-party="U" onclick="togglePartyExclude(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⬜ Exclude Unknown</button>
+            <button class="door-party-btn active" data-party="all" onclick="setDoorParty(this)" style="background:var(--accent);border:1.5px solid var(--accent);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">All</button>
+            <button class="door-party-btn" data-party="D" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔵 Dems</button>
+            <button class="door-party-btn" data-party="U" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⬜ Unaffiliated</button>
+            <button class="door-party-btn" data-party="R" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔴 Republicans</button>
           </div>
         </div>
 
@@ -1754,6 +1755,57 @@ return{data:data,meta:{fields:hdrs}};}};</script>
         <div style="font-size:11px;color:var(--text-muted);margin-top:10px;">Select one or more wards — only voters in those wards will be included</div>
       </div>
     </div>
+    <!-- PRECINCT FILTER -->
+    <div class="mf-section" id="mf-precinct-section">
+      <div class="mf-toggle-row">
+        <label class="mf-toggle" for="mf-precinct-toggle">
+          <input type="checkbox" id="mf-precinct-toggle" onchange="mfTogglePanel('precinct')">
+          <span class="mf-toggle-slider"></span>
+        </label>
+        <span class="mf-toggle-label">Filter by Precinct</span>
+      </div>
+      <div class="mf-sub-panel" id="mf-precinct-panel">
+        <div class="mf-label" style="margin-bottom:6px;">Select one or more precincts</div>
+        <div id="mf-precinct-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;max-height:220px;overflow-y:auto;">
+          <div style="font-size:11px;color:var(--text-muted);font-style:italic;">Loading precincts…</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Leave all unselected to include all precincts</div>
+      </div>
+    </div>
+
+    <!-- PARTY FILTER -->
+    <div class="mf-section" id="mf-party-section">
+      <div class="mf-toggle-row">
+        <label class="mf-toggle" for="mf-party-toggle">
+          <input type="checkbox" id="mf-party-toggle" onchange="mfTogglePanel('party')">
+          <span class="mf-toggle-slider"></span>
+        </label>
+        <span class="mf-toggle-label">Filter by Party</span>
+      </div>
+      <div class="mf-sub-panel" id="mf-party-panel">
+        <div class="mf-label" style="margin-bottom:6px;">Include only</div>
+        <div class="mf-chip-group" style="gap:8px;">
+          <button class="mf-chip sel" data-mail-party="all"  onclick="mfPickParty(this)">All</button>
+          <button class="mf-chip"     data-mail-party="D"    onclick="mfPickParty(this)">🔵 Democrats</button>
+          <button class="mf-chip"     data-mail-party="U"    onclick="mfPickParty(this)">⬜ Unaffiliated</button>
+          <button class="mf-chip"     data-mail-party="R"    onclick="mfPickParty(this)">🔴 Republicans</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Unaffiliated = no registered party on file</div>
+      </div>
+    </div>
+
+    <!-- ISSUE VOTER FILTER -->
+    <div class="mf-section" id="mf-issue-section">
+      <div class="mf-toggle-row">
+        <label class="mf-toggle" for="mf-issue-toggle">
+          <input type="checkbox" id="mf-issue-toggle" onchange="mfToggleIssueFilter(this)">
+          <span class="mf-toggle-slider"></span>
+        </label>
+        <span class="mf-toggle-label">🗳️ Issue Voters Only (Nov 2023)</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;padding-left:48px;">Show only households where someone voted in the Nov 2023 election (Issue 1 — Abortion Rights &amp; Issue 2 — Marijuana) but skipped the 2022 midterm. ~9,400 high-value persuasion targets.</div>
+    </div>
+
     <!-- CENTRAL COMMITTEE DISTRICT -->
     <div class="mf-section" id="mf-cc-section" style="display:none;">
       <div class="mf-toggle-row">
@@ -2342,6 +2394,55 @@ async function loadVotersFromAPI(focusAreas){
 
 // ── STATE ──────────────────────────────────────────────────
 let voters=[], walkClusters=[], mailList=[];
+
+// ── Refresh guard — warns before losing an active walk list ──────────────────
+function _inActiveRoute(){
+  return walkClusters && walkClusters.length > 0;
+}
+
+// Standard browser beforeunload — catches desktop refresh, back button, close
+window.addEventListener('beforeunload', function(e){
+  if(!_inActiveRoute()) return;
+  e.preventDefault();
+  e.returnValue = 'You have an active walk list — refreshing will reset it. Continue?';
+  return e.returnValue;
+});
+
+// Mobile pull-to-refresh / swipe-down interception
+// We show a custom confirm instead since mobile browsers ignore beforeunload text
+let _touchStartY = 0;
+document.addEventListener('touchstart', function(e){
+  _touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+document.addEventListener('touchmove', function(e){
+  if(!_inActiveRoute()) return;
+  const dy = e.touches[0].clientY - _touchStartY;
+  // Pull-to-refresh fires when pulling down from the very top of the page
+  if(dy > 60 && window.scrollY === 0){
+    e.preventDefault(); // block the native pull-to-refresh
+    if(!document.getElementById('refresh-guard-overlay')){
+      _showRefreshGuard();
+    }
+  }
+}, { passive: false });
+
+function _showRefreshGuard(){
+  const ol = document.createElement('div');
+  ol.id = 'refresh-guard-overlay';
+  ol.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;';
+  ol.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:360px;width:100%;text-align:center;">
+      <div style="font-size:32px;margin-bottom:12px;">⚠️</div>
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:10px;">Refresh Walk List?</div>
+      <div style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:24px;">You have an active walk list with <strong style="color:var(--text);">${walkClusters.length} stops</strong>. Refreshing will reset everything and you'll need to set up again.</div>
+      <div style="display:flex;gap:12px;">
+        <button onclick="document.getElementById('refresh-guard-overlay').remove();" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">Stay on List</button>
+        <button onclick="location.reload();" style="flex:1;background:#dc2626;border:none;color:#fff;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">Refresh Anyway</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ol);
+}
 window._appState = { replaceVoter: function(id,v){ var i=voters.findIndex(function(x){return String(x.id)===String(id);}); if(i>=0)voters[i]=v; else voters.push(v); } };
 var _unused1=0, _unused2=[], _unused3=[], map=null, markers={};
 let mId=null, mScore=null, mContact=null, mYard=false, mOppYard=false;
@@ -3261,37 +3362,225 @@ function adaptiveThreshold(pts){
   return Math.max(0.05, Math.min(0.25, median*2));
 }
 
-// Party exclude filter state
-let _partyExcludes = new Set(); // empty = exclude nobody
+// Party filter state — door canvassing (include mode)
+let _doorPartyFilter = 'all'; // 'all' | 'D' | 'U' | 'R'
 
-function togglePartyExclude(btn){
-  const party = btn.dataset.party;
-  if(_partyExcludes.has(party)){
-    _partyExcludes.delete(party);
-    btn.style.background = 'var(--surface2)';
-    btn.style.borderColor = 'var(--border)';
-    btn.style.color = 'var(--text)';
+// Mail canvassing party filter
+let _mailPartyFilter = 'all'; // 'all' | 'D' | 'U' | 'R'
+
+// Mail canvassing precinct filter
+let _mailPrecincts = []; // [] = all precincts
+
+// Issue voter filter (Nov 2023 abortion/marijuana)
+let _mailIssueVotersOnly = false;
+
+function mfToggleIssueFilter(cb){
+  _mailIssueVotersOnly = cb.checked;
+}
+
+function setDoorParty(btn){
+  _doorPartyFilter = btn.dataset.party;
+  document.querySelectorAll('.door-party-btn').forEach(b => {
+    const active = b.dataset.party === _doorPartyFilter;
+    b.classList.toggle('active', active);
+    b.style.background   = active ? 'var(--accent)' : 'var(--surface2)';
+    b.style.borderColor  = active ? 'var(--accent)' : 'var(--border)';
+    b.style.color        = active ? '#fff'           : 'var(--text)';
+  });
+}
+
+function mfPickParty(btn){
+  _mailPartyFilter = btn.dataset.mailParty;
+  document.querySelectorAll('[data-mail-party]').forEach(b => b.classList.toggle('sel', b.dataset.mailParty === _mailPartyFilter));
+}
+
+function mfTogglePrecinct(btn){
+  const prec = btn.dataset.prec;
+  if(_mailPrecincts.includes(prec)){
+    _mailPrecincts = _mailPrecincts.filter(p => p !== prec);
+    btn.classList.remove('sel');
   } else {
-    _partyExcludes.add(party);
-    btn.style.background = '#dc2626';
-    btn.style.borderColor = '#dc2626';
-    btn.style.color = '#fff';
-    if(party === 'D'){ btn.style.background='#1d4ed8'; btn.style.borderColor='#1d4ed8'; }
-    if(party === 'U'){ btn.style.background='#6b7280'; btn.style.borderColor='#6b7280'; }
+    _mailPrecincts.push(prec);
+    btn.classList.add('sel');
   }
 }
 
+function buildMailPrecinctChips(){
+  const el = document.getElementById('mf-precinct-chips');
+  if(!el) return;
+  // Build unique sorted list of precincts from CC_SEATS
+  const precincts = [...new Set(CC_SEATS.map(s => s.normalized))].sort();
+  el.innerHTML = precincts.map(p =>
+    `<button class="mf-chip${_mailPrecincts.includes(p) ? ' sel' : ''}" data-prec="${p}" onclick="mfTogglePrecinct(this)" style="font-size:11px;padding:5px 10px;">${p}</button>`
+  ).join('');
+}
+
 function isPartyExcluded(v){
-  if(!_partyExcludes.size) return false;
+  // Used by door canvassing cluster filter
+  if(_doorPartyFilter === 'all') return false;
   const p = (v.party || '').toUpperCase();
-  const isDem = p === 'D';
-  const isRep = p === 'R';
+  const isDem     = p === 'D';
+  const isRep     = p === 'R';
   const isUnknown = !isDem && !isRep;
-  if(_partyExcludes.has('D') && isDem) return true;
-  if(_partyExcludes.has('R') && isRep) return true;
-  if(_partyExcludes.has('U') && isUnknown) return true;
+  if(_doorPartyFilter === 'D' && !isDem) return true;
+  if(_doorPartyFilter === 'R' && !isRep) return true;
+  if(_doorPartyFilter === 'U' && !isUnknown) return true;
   return false;
 }
+
+
+
+// ── Next Stop Navigator ───────────────────────────────────────────────────────
+let _navStopIdx   = 0;       // current stop index within the route
+let _navCluster   = [];      // flat ordered list of stops for current route
+let _navGpsLine   = null;    // Leaflet polyline from GPS to next stop
+let _navGpsWatch  = null;    // GPS watchPosition ID
+let _navUserPos   = null;    // {lat, lon} of user
+
+function navOpen(routeIdx){
+  // Build ordered stop list from the selected route
+  _navCluster = (walkClusters[routeIdx] || []).filter(v => v.lat && v.lon);
+  if(!_navCluster.length){
+    toast('No geocoded stops in this route', true);
+    return;
+  }
+  _navStopIdx = 0;
+  _navRender();
+  document.getElementById('nav-drawer').style.display = 'block';
+
+  // Start GPS watching
+  if(navigator.geolocation){
+    _navGpsWatch = navigator.geolocation.watchPosition(pos => {
+      _navUserPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      _navUpdateGpsLine();
+      _navUpdateDistance();
+    }, null, { enableHighAccuracy: true, maximumAge: 3000 });
+  }
+}
+
+function navClose(){
+  document.getElementById('nav-drawer').style.display = 'none';
+  if(_navGpsWatch != null){ navigator.geolocation.clearWatch(_navGpsWatch); _navGpsWatch = null; }
+  if(_navGpsLine && map){ map.removeLayer(_navGpsLine); _navGpsLine = null; }
+  _navUserPos = null;
+}
+
+function _navRender(){
+  const v   = _navCluster[_navStopIdx];
+  if(!v) return;
+  const total = _navCluster.length;
+  const idx   = _navStopIdx;
+
+  // Progress
+  document.getElementById('nav-progress-bar').style.width = `${((idx + 1) / total) * 100}%`;
+  document.getElementById('nav-counter').textContent = `Stop ${idx + 1} of ${total}`;
+
+  // Names — extract from vns array
+  let names = v.name || '';
+  if(!names && v.voters && v.voters.length){
+    names = v.voters.map(p => Array.isArray(p) ? p[0] + ' ' + p[1] : p).join(', ');
+  }
+  document.getElementById('nav-names').textContent = names || '—';
+  document.getElementById('nav-addr').textContent  = v.address || v.a || '—';
+
+  // Score badge
+  const sc  = SC[v.score] || SC['unknown'];
+  const sb  = document.getElementById('nav-score-badge');
+  sb.textContent   = sc.label;
+  sb.style.background = sc.bg + '33';
+  sb.style.color      = sc.color;
+  sb.style.border     = `1px solid ${sc.color}`;
+
+  // Party badge
+  const pb = document.getElementById('nav-party-badge');
+  pb.textContent = v.party === 'D' ? '🔵 Dem' : v.party === 'R' ? '🔴 Rep' : '⬜ Unaffiliated';
+
+  // Status badge
+  const stb  = document.getElementById('nav-status-badge');
+  const cs   = v.contactStatus;
+  stb.textContent  = cs === 'contacted' ? '✓ Contacted' : cs === 'not_contacted' ? '✗ Not Home' : '⏳ Pending';
+  stb.style.color  = cs === 'contacted' ? 'var(--contacted)' : cs === 'not_contacted' ? 'var(--danger)' : 'var(--text-muted)';
+  stb.style.background = cs === 'contacted' ? 'var(--contacted)22' : cs === 'not_contacted' ? 'var(--danger)22' : 'var(--surface2)';
+  stb.style.border = `1px solid ${cs === 'contacted' ? 'var(--contacted)' : cs === 'not_contacted' ? 'var(--danger)' : 'var(--border)'}`;
+
+  // Prev/Next button states
+  document.getElementById('nav-prev-btn').style.opacity = idx === 0 ? '0.35' : '1';
+  document.getElementById('nav-next-btn').textContent   = idx === total - 1 ? '✓ Done' : 'Next →';
+
+  // Pan map to this stop
+  if(map && v.lat && v.lon){
+    map.panTo([v.lat, v.lon], { animate: true, duration: 0.5 });
+  }
+
+  // Update GPS line
+  _navUpdateGpsLine();
+  _navUpdateDistance();
+}
+
+function _navUpdateGpsLine(){
+  if(!map) return;
+  if(_navGpsLine){ map.removeLayer(_navGpsLine); _navGpsLine = null; }
+  if(!_navUserPos) return;
+  const v = _navCluster[_navStopIdx];
+  if(!v || !v.lat || !v.lon) return;
+  _navGpsLine = L.polyline(
+    [[_navUserPos.lat, _navUserPos.lon], [v.lat, v.lon]],
+    { color: 'var(--accent)', weight: 3, dashArray: '6 8', opacity: 0.8 }
+  ).addTo(map);
+}
+
+function _navUpdateDistance(){
+  if(!_navUserPos) return;
+  const v = _navCluster[_navStopIdx];
+  if(!v || !v.lat || !v.lon) return;
+  const dist = haversine(_navUserPos.lat, _navUserPos.lon, v.lat, v.lon);
+  const feet = Math.round(dist * 5280);
+  document.getElementById('nav-dist-val').textContent = feet > 5280
+    ? (dist).toFixed(1) + ' mi'
+    : feet.toLocaleString();
+  document.getElementById('nav-dist').querySelector('div:last-child').textContent =
+    feet > 5280 ? '' : 'feet';
+}
+
+function navNext(){
+  if(_navStopIdx >= _navCluster.length - 1){
+    // Last stop — offer to close
+    navClose();
+    toast('Route complete! 🎉');
+    return;
+  }
+  _navStopIdx++;
+  _navRender();
+}
+
+function navPrev(){
+  if(_navStopIdx <= 0) return;
+  _navStopIdx--;
+  _navRender();
+}
+
+function navMarkDoor(){
+  const v = _navCluster[_navStopIdx];
+  if(!v) return;
+  // Open the existing modal for this voter
+  openModal(v.id);
+  // After modal closes, refresh the navigator status
+  const origClose = window._navModalCloseHook;
+  window._navModalCloseHook = () => { _navRender(); };
+}
+
+function navOpenMaps(){
+  const v = _navCluster[_navStopIdx];
+  if(!v) return;
+  const addr = encodeURIComponent(v.address || `${v.lat},${v.lon}`);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if(isIOS){
+    window.open(`https://maps.apple.com/?q=${addr}&dirflg=w`, '_blank', 'noopener,noreferrer');
+  } else {
+    window.open(`https://www.google.com/maps/search/?api=1&query=${addr}`, '_blank', 'noopener,noreferrer');
+  }
+}
+
 
 // Door-to-door score filter state
 let _doorScores = new Set(['strong','leans']); // default: strong + leans
@@ -4894,7 +5183,12 @@ function openModal(id){
   document.getElementById('modal-overlay').classList.add('open');
 }
 
-function closeModal(){document.getElementById('modal-overlay').classList.remove('open');mId=null;}
+function closeModal(){
+  document.getElementById('modal-overlay').classList.remove('open');
+  mId=null;
+  // Refresh navigator stop if open (contact status may have changed)
+  if(document.getElementById('nav-drawer').style.display !== 'none') _navRender();
+}
 
 function toggleSpokeWith(btn){
   btn.classList.toggle('spoke');
@@ -5666,8 +5960,11 @@ function openMailFilter(){
   document.getElementById('mf-loc-twps').innerHTML   = twps.map(t=>makeChip(t.replace(' Twp',''),'township',t)).join('');
   document.getElementById('mf-loc-vils').innerHTML   = vils.map(v=>makeChip(v.replace(' Vlg',''),'village',v)).join('');
 
+  // Build precinct chips
+  buildMailPrecinctChips();
+
   // Reset all toggles
-  ['age','loc','district','ward','cc'].forEach(p=>{
+  ['age','loc','district','ward','cc','precinct','party'].forEach(p=>{
     const tog = document.getElementById(`mf-${p}-toggle`);
     const pan = document.getElementById(`mf-${p}-panel`);
     if(tog) tog.checked=false;
@@ -5688,6 +5985,14 @@ function openMailFilter(){
   document.getElementById('mf-age-min').value='';
   document.getElementById('mf-age-max').value='';
   document.querySelectorAll('.mf-chip').forEach(c=>c.classList.remove('sel'));
+  // Restore "All" as default party selection
+  const allPartyBtn = document.querySelector('[data-mail-party="all"]');
+  if(allPartyBtn) allPartyBtn.classList.add('sel');
+  _mailPartyFilter = 'all';
+  _mailPrecincts = [];
+  _mailIssueVotersOnly = false;
+  const issueToggle = document.getElementById('mf-issue-toggle');
+  if(issueToggle) issueToggle.checked = false;
   mailFilterDonorOrgs = [];
 
   // Show CC filter only for admins
@@ -5842,6 +6147,14 @@ function applyMailFilter(useFilters){
     if(document.getElementById('mf-ward-toggle').checked){
       mailFilterWards = [...document.querySelectorAll('[data-ward].sel')].map(b=>b.dataset.ward);
     } else { mailFilterWards = []; }
+    // Precinct filter
+    if(document.getElementById('mf-precinct-toggle')?.checked){
+      // _mailPrecincts already maintained by mfTogglePrecinct
+    } else { _mailPrecincts = []; }
+    // Party filter
+    if(document.getElementById('mf-party-toggle')?.checked){
+      // _mailPartyFilter already maintained by mfPickParty
+    } else { _mailPartyFilter = 'all'; }
 
     // Central committee precincts (multi-select)
     if(document.getElementById('mf-cc-toggle')?.checked){
@@ -5850,6 +6163,7 @@ function applyMailFilter(useFilters){
   } else {
     mailFilterAge = null; mailFilterPresOnly = false; mailFilterLocs = [];
     mailFilterDistrict = null; mailFilterWards = []; mailFilterCcPrecincts = [];
+    _mailPrecincts = []; _mailPartyFilter = 'all'; _mailIssueVotersOnly = false;
   }
 
   runMailCanvass();
@@ -5922,8 +6236,27 @@ function applyMailFiltersToVoters(vlist){
     if(mailFilterCcPrecincts && mailFilterCcPrecincts.length){
       if(!mailFilterCcPrecincts.includes((v.precinctName||'').toUpperCase())) return false;
     }
-    // Always exclude Republican donors, registered Republicans, and R-primary-only voters
-    if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
+    // Precinct filter
+    if(_mailPrecincts.length){
+      const vPrec = (v.precinctName || v.precinct || '').toUpperCase();
+      if(!_mailPrecincts.includes(vPrec)) return false;
+    }
+    // Issue voter filter — household must have issueVoter:true
+    if(_mailIssueVotersOnly && !v.issueVoter) return false;
+
+    // Party filter
+    if(_mailPartyFilter !== 'all'){
+      const p = (v.party || '').toUpperCase();
+      const isDem     = p === 'D';
+      const isRep     = p === 'R';
+      const isUnknown = !isDem && !isRep;
+      if(_mailPartyFilter === 'D' && !isDem) return false;
+      if(_mailPartyFilter === 'R' && !isRep) return false;
+      if(_mailPartyFilter === 'U' && !isUnknown) return false;
+    } else {
+      // Default: exclude registered Republicans unless party filter explicitly set to R
+      if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
+    }
     return true;
   }).sort((a,b)=>{
     if(!mailSortDonors) return 0;
@@ -6440,7 +6773,8 @@ function showFocusedRoute(idx){
       <button onclick="openWalkSheetPrint()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🖨 Walk Sheet</button>
       <button onclick="openScanOverlay()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">📷 Scan Sheet</button>
       <button onclick="openMapsChoice()" style="background:#1a73e8;border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🗺 Maps Route</button>
-      <button class="fro-back" onclick="exitFocusedRoute()">← All Routes</button>
+      <button onclick="navOpen(selectedRoute)" style="background:var(--accent);border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">▶ Start Navigator</button>
+      <button class="fro-back" onclick="exitFocusedRoute();navClose();">← All Routes</button>
     </div>`;
 
   // Build voter rows
@@ -8246,6 +8580,9 @@ async function openCandidateDash(){
   if(ageMinEl) ageMinEl.value = fa.ageMin||'';
   if(ageMaxEl) ageMaxEl.value = fa.ageMax||'';
 
+  // Restore contact plan
+  _restoreContactPlan(fa);
+
   // Restore precinct panel if a city was selected
   const precPanel = document.getElementById('dash-precinct-panel');
   if(precPanel){
@@ -8266,9 +8603,9 @@ async function openCandidateDash(){
     }
   }
 
-  // ── Fetch ALL contacts from D1 (not just current session) ──────────────────
+  // ── Fetch ALL contacts from D1 and enrich with voter names ──────────────────
   const listEl = document.getElementById('dash-contacted-list');
-  listEl.innerHTML = '<div style="padding:8px 0;color:var(--text-muted);">Loading contacts from server…</div>';
+  listEl.innerHTML = '<div style="padding:8px 0;color:var(--text-muted);">Loading canvass history…</div>';
   const statsEl = document.getElementById('dash-stats');
   statsEl.innerHTML = '';
 
@@ -8276,6 +8613,37 @@ async function openCandidateDash(){
   try {
     const r = await apiGet('/api/contacts/' + encodeURIComponent(candidateSession.id), {});
     allContacts = r.contacts || [];
+
+    // Enrich contacts with voter names/addresses from in-memory voter list
+    // (voters already loaded in session, or fall back to address only)
+    const voterIdx = {};
+    [...voters, ...mailList].forEach(v => { voterIdx[String(v.id)] = v; });
+
+    allContacts = allContacts.map(c => {
+      const v = voterIdx[String(c.voter_id)];
+      // Parse spoke_with indices into names
+      let spokeNames = '';
+      if(v && c.spoke_with){
+        try {
+          const idxs = typeof c.spoke_with === 'string' ? JSON.parse(c.spoke_with) : c.spoke_with;
+          if(Array.isArray(idxs) && idxs.length && v.voters){
+            spokeNames = idxs.map(i => {
+              const p = v.voters[i];
+              return Array.isArray(p) ? (p[0]+' '+p[1]).trim() : String(p||'');
+            }).filter(Boolean).join(', ');
+          }
+        } catch(e){}
+      }
+      return {
+        ...c,
+        address:         v ? (v.address||v.a||c.address||'') : (c.address||''),
+        voter_name:      v ? v.name : '',
+        household_names: v && v.voters ? v.voters.map(p=>Array.isArray(p)?(p[0]+' '+p[1]).trim():p).join(', ') : '',
+        spoke_with_names: spokeNames,
+        party:           v ? (v.party||'') : '',
+      };
+    });
+
     _dashAllContacts = allContacts;
   } catch(e) {
     // Fallback to session data if API fails
@@ -8283,78 +8651,200 @@ async function openCandidateDash(){
     allContacts = allVoters
       .filter(v=>v.contactStatus==='contacted'||v.contactStatus==='not_contacted'||v.yardSign)
       .map(v=>({
-        voter_id: v.id,
-        address: v.address||v.a,
-        contact_status: v.contactStatus,
-        contact_reason: v.contactReason,
-        yard_sign: v.yardSign,
-        notes: v.notes,
-        spoke_with: JSON.stringify(v.spokeWith||[]),
-        new_ally: v.newAlly,
-        score: v.score,
+        voter_id:        v.id,
+        address:         v.address||v.a||'',
+        voter_name:      v.name||'',
+        household_names: v.voters ? v.voters.map(p=>Array.isArray(p)?(p[0]+' '+p[1]).trim():p).join(', ') : '',
+        contact_status:  v.contactStatus,
+        contact_reason:  v.contactReason,
+        yard_sign:       v.yardSign,
+        notes:           v.notes,
+        spoke_with_names: '',
+        new_ally:        v.newAlly,
+        score:           v.score,
+        party:           v.party||'',
       }));
     _dashAllContacts = allContacts;
   }
 
-  const contacted   = allContacts.filter(c => c.contact_status === 'contacted');
-  const notHome     = allContacts.filter(c => c.contact_reason === 'Not home');
-  const yardSigns   = allContacts.filter(c => c.yard_sign);
-  const newAllies   = allContacts.filter(c => c.new_ally);
-  const withNotes   = allContacts.filter(c => c.notes && c.notes.trim());
+  const contacted  = allContacts.filter(c => c.contact_status === 'contacted');
+  const notHome    = allContacts.filter(c => c.contact_reason === 'Not home');
+  const yardSigns  = allContacts.filter(c => c.yard_sign);
+  const newAllies  = allContacts.filter(c => c.new_ally);
+  const withNotes  = allContacts.filter(c => c.notes && c.notes.trim());
+  const supporters = allContacts.filter(c => c.score === 'strong' || c.new_ally);
 
   // Stats
   statsEl.innerHTML = [
-    ['Contacted',   contacted.length,  '#34d399'],
-    ['Not Home',    notHome.length,    '#94a3b8'],
-    ['Yard Signs',  yardSigns.length,  '#fbbf24'],
-    ['New Allies',  newAllies.length,  '#818cf8'],
-    ['With Notes',  withNotes.length,  '#38bdf8'],
-    ['Total Stops', allContacts.length,''],
+    ['Doors Knocked', allContacts.length, ''],
+    ['Contacted',     contacted.length,   '#34d399'],
+    ['Not Home',      notHome.length,     '#94a3b8'],
+    ['Supporters',    supporters.length,  '#818cf8'],
+    ['Yard Signs',    yardSigns.length,   '#fbbf24'],
+    ['With Notes',    withNotes.length,   '#38bdf8'],
   ].map(([lbl,val,col])=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
     <div style="font-size:22px;font-weight:700;color:${col||'var(--text)'};">${val}</div>
     <div style="font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">${lbl}</div>
   </div>`).join('');
 
-  // Contact list — show all stops, sorted: notes first, then contacted, then not_contacted
-  if(!allContacts.length){
-    listEl.innerHTML='<div style="padding:8px 0;color:var(--text-muted);">No voters contacted yet.</div>';
-  } else {
-    const sorted = [...allContacts].sort((a,b)=>{
-      // Notes first
-      if((b.notes&&b.notes.trim())&&!(a.notes&&a.notes.trim())) return 1;
-      if((a.notes&&a.notes.trim())&&!(b.notes&&b.notes.trim())) return -1;
-      // Then contacted
-      if(b.contact_status==='contacted'&&a.contact_status!=='contacted') return 1;
-      if(a.contact_status==='contacted'&&b.contact_status!=='contacted') return -1;
-      return 0;
-    });
+  // Search/filter controls
+  listEl.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <input id="dash-contact-search" placeholder="Search name or address…" oninput="_dashFilterContacts()"
+        style="flex:1;min-width:160px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;">
+      <select id="dash-contact-filter" onchange="_dashFilterContacts()"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;cursor:pointer;">
+        <option value="all">All</option>
+        <option value="contacted">✓ Contacted</option>
+        <option value="not_contacted">✗ Not Home</option>
+        <option value="strong">⭐ Supporters</option>
+        <option value="yard_sign">🪧 Yard Signs</option>
+        <option value="new_ally">＋ New Allies</option>
+        <option value="notes">📝 Has Notes</option>
+      </select>
+    </div>
+    <div id="dash-contact-rows"></div>`;
 
-    listEl.innerHTML = sorted.map(c=>{
-      const statusColor = c.contact_status==='contacted' ? 'var(--contacted)' : c.contact_status==='not_contacted' ? 'var(--danger)' : 'var(--text-muted)';
-      const statusLabel = c.contact_status==='contacted' ? '✓ Contacted' : c.contact_status==='not_contacted' ? '✗ Not home' : 'Pending';
-      const scoreColor  = c.score==='strong' ? 'var(--strong)' : c.score==='leans' ? 'var(--leans)' : 'var(--text-muted)';
-      return `<div style="padding:10px 0;border-bottom:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
-          <div>
-            <div style="color:var(--text);font-weight:600;font-size:13px;">${c.address||'—'}</div>
-            ${c.spoke_with_names ? `<div style="color:var(--accent);font-size:11px;margin-top:2px;">💬 Spoke with: ${c.spoke_with_names}</div>` : ''}
-          </div>
-          <div style="text-align:right;flex-shrink:0;">
-            <div style="font-size:11px;font-weight:700;color:${statusColor};">${statusLabel}</div>
-            ${c.score ? `<div style="font-size:10px;color:${scoreColor};">${c.score}</div>` : ''}
-            ${c.yard_sign ? '<div style="font-size:10px;color:var(--yard);">🪧 Yard sign</div>' : ''}
-            ${c.new_ally ? '<div style="font-size:10px;color:#818cf8;">⭐ New ally</div>' : ''}
+  _dashRenderContactRows(allContacts);
+}
+
+function _dashFilterContacts(){
+  const q   = (document.getElementById('dash-contact-search')?.value||'').toLowerCase();
+  const fil = document.getElementById('dash-contact-filter')?.value || 'all';
+  let list  = [..._dashAllContacts];
+  if(fil === 'contacted')    list = list.filter(c => c.contact_status === 'contacted');
+  if(fil === 'not_contacted')list = list.filter(c => c.contact_status === 'not_contacted');
+  if(fil === 'strong')       list = list.filter(c => c.score === 'strong' || c.new_ally);
+  if(fil === 'yard_sign')    list = list.filter(c => c.yard_sign);
+  if(fil === 'new_ally')     list = list.filter(c => c.new_ally);
+  if(fil === 'notes')        list = list.filter(c => c.notes && c.notes.trim());
+  if(q) list = list.filter(c =>
+    (c.voter_name||'').toLowerCase().includes(q) ||
+    (c.household_names||'').toLowerCase().includes(q) ||
+    (c.address||'').toLowerCase().includes(q) ||
+    (c.notes||'').toLowerCase().includes(q)
+  );
+  _dashRenderContactRows(list);
+}
+
+function _dashRenderContactRows(list){
+  const el = document.getElementById('dash-contact-rows');
+  if(!el) return;
+
+  if(!list.length){
+    el.innerHTML = '<div style="padding:16px 0;color:var(--text-muted);text-align:center;font-size:13px;">No results</div>';
+    return;
+  }
+
+  // Sort: new allies first, then notes, then contacted, then not home
+  const sorted = [...list].sort((a,b) => {
+    const aScore = (a.new_ally?4:0) + (a.notes&&a.notes.trim()?3:0) + (a.contact_status==='contacted'?2:0) + (a.yard_sign?1:0);
+    const bScore = (b.new_ally?4:0) + (b.notes&&b.notes.trim()?3:0) + (b.contact_status==='contacted'?2:0) + (b.yard_sign?1:0);
+    return bScore - aScore;
+  });
+
+  el.innerHTML = sorted.map(c => {
+    const statusColor = c.contact_status==='contacted' ? 'var(--contacted)' : c.contact_status==='not_contacted' ? 'var(--danger)' : 'var(--text-muted)';
+    const statusLabel = c.contact_status==='contacted' ? '✓ Contacted' : c.contact_status==='not_contacted' ? '✗ Not Home' : 'Pending';
+    const scoreColor  = c.score==='strong' ? 'var(--strong)' : c.score==='leans' ? 'var(--leans)' : 'var(--text-muted)';
+    const partyLabel  = c.party==='D' ? '🔵' : c.party==='R' ? '🔴' : '⬜';
+    const names       = c.household_names || c.voter_name || '—';
+
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="color:var(--text);font-weight:700;font-size:13px;margin-bottom:1px;">${names} ${partyLabel}</div>
+          <div style="color:var(--text-muted);font-size:11px;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.address||'—'}</div>
+          ${c.spoke_with_names ? `<div style="color:var(--accent);font-size:11px;margin-bottom:3px;">💬 Spoke with: ${c.spoke_with_names}</div>` : ''}
+          <div style="display:flex;gap:5px;flex-wrap:wrap;">
+            <span style="font-size:10px;font-weight:700;color:${statusColor};background:${statusColor}22;border:1px solid ${statusColor};padding:2px 6px;border-radius:4px;">${statusLabel}</span>
+            ${c.score ? `<span style="font-size:10px;color:${scoreColor};background:${scoreColor}22;border:1px solid ${scoreColor};padding:2px 6px;border-radius:4px;">${c.score}</span>` : ''}
+            ${c.yard_sign ? `<span style="font-size:10px;color:var(--yard);background:var(--yard)22;border:1px solid var(--yard);padding:2px 6px;border-radius:4px;">🪧 Yard sign</span>` : ''}
+            ${c.new_ally  ? `<span style="font-size:10px;color:#818cf8;background:#818cf822;border:1px solid #818cf8;padding:2px 6px;border-radius:4px;">⭐ New ally</span>` : ''}
           </div>
         </div>
-        ${c.notes && c.notes.trim() ? `<div style="margin-top:6px;padding:6px 10px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;font-size:11px;color:var(--text);line-height:1.5;">📝 ${c.notes.trim()}</div>` : ''}
-        ${c.contact_reason && c.contact_reason!=='Not home' ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">${c.contact_reason}</div>` : ''}
-      </div>`;
-    }).join('');
-  }
+      </div>
+      ${c.notes && c.notes.trim() ? `<div style="margin-top:8px;padding:8px 12px;background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;font-size:12px;color:var(--text);line-height:1.6;">📝 ${c.notes.trim()}</div>` : ''}
+      ${c.contact_reason && !['Not home',''].includes(c.contact_reason) ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">${c.contact_reason}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function closeCandidateDash(){
   document.getElementById('cand-dash-overlay').style.display='none';
+}
+
+// ── Contact Plan helpers ─────────────────────────────────────────────────────
+let _contactMethods = new Set(); // 'door','phone','mail'
+
+function toggleContactMethod(btn){
+  const method = btn.dataset.method;
+  if(_contactMethods.has(method)){
+    _contactMethods.delete(method);
+    btn.classList.remove('active');
+  } else {
+    _contactMethods.add(method);
+    btn.classList.add('active');
+  }
+}
+
+let _precinctTargetMode = 'none'; // 'none' | 'pick'
+let _targetPrecincts    = new Set();
+
+function setPrecinctTargetMode(mode){
+  _precinctTargetMode = mode;
+  const panel   = document.getElementById('dash-prec-target-panel');
+  const noneBtn = document.getElementById('dash-prec-target-none');
+  const pickBtn = document.getElementById('dash-prec-target-pick');
+  if(mode === 'pick'){
+    panel.style.display = 'flex';
+    noneBtn.classList.remove('active');
+    pickBtn.classList.add('active');
+    // Build chips if not already done
+    if(!panel.children.length || panel.querySelector('.loading-msg')){
+      _buildTargetPrecinctChips();
+    }
+  } else {
+    panel.style.display = 'none';
+    noneBtn.classList.add('active');
+    pickBtn.classList.remove('active');
+    _targetPrecincts.clear();
+  }
+}
+
+function _buildTargetPrecinctChips(){
+  const panel = document.getElementById('dash-prec-target-panel');
+  if(!panel) return;
+  const precincts = [...new Set(CC_SEATS.map(s => s.normalized))].sort();
+  panel.innerHTML = precincts.map(p =>
+    `<button class="dash-chip${_targetPrecincts.has(p)?' active':''}" data-prec-target="${p}"
+      onclick="_toggleTargetPrecinct(this)"
+      style="font-size:10px;padding:4px 8px;">${p}</button>`
+  ).join('');
+}
+
+function _toggleTargetPrecinct(btn){
+  const p = btn.dataset.precTarget;
+  if(_targetPrecincts.has(p)){
+    _targetPrecincts.delete(p);
+    btn.classList.remove('active');
+  } else {
+    _targetPrecincts.add(p);
+    btn.classList.add('active');
+  }
+}
+
+function _restoreContactPlan(fa){
+  // Restore contact methods
+  _contactMethods = new Set(fa.contactMethods || []);
+  document.querySelectorAll('.dash-method-btn').forEach(b => {
+    b.classList.toggle('active', _contactMethods.has(b.dataset.method));
+  });
+  // Restore precinct targets
+  _targetPrecincts = new Set(fa.targetPrecincts || []);
+  _precinctTargetMode = _targetPrecincts.size ? 'pick' : 'none';
+  setPrecinctTargetMode(_precinctTargetMode);
+  if(_targetPrecincts.size) _buildTargetPrecinctChips();
 }
 
 function toggleFocusArea(btn){
@@ -8518,6 +9008,11 @@ function saveFocusAreas(){
     fa.precinct = null; // whole city
   }
 
+  // Save contact plan
+  fa.contactMethods  = [..._contactMethods];
+  fa.contactAttempts = fa.contactAttempts || null;
+  fa.targetPrecincts = _precinctTargetMode === 'pick' ? [..._targetPrecincts] : [];
+
   const msg = document.getElementById('dash-message').value.trim();
   const script = document.getElementById('dash-script').value.trim();
   candidateSession.focusAreas = fa;
@@ -8651,17 +9146,20 @@ function exportCandidateCSV(){
 
   // Use D1 contacts if available, otherwise fall back to session data
   let rows = [];
-  const hd = ['Address','Contact Status','Score','Yard Sign','New Ally','Contact Reason','Notes'];
+  const hd = ['Household Names','Address','Party','Contact Status','Score','Yard Sign','New Ally','Spoke With','Contact Reason','Notes'];
 
   if(_dashAllContacts && _dashAllContacts.length){
     rows = _dashAllContacts.map(c=>{
       const esc = s => '"' + (s||'').replace(/"/g,'""') + '"';
       return [
+        esc(c.household_names || c.voter_name || ''),
         esc(c.address||''),
+        c.party||'',
         c.contact_status||'pending',
         c.score||'',
         c.yard_sign ? 'yes' : 'no',
         c.new_ally ? 'yes' : 'no',
+        esc(c.spoke_with_names||''),
         esc(c.contact_reason||''),
         esc(c.notes||''),
       ].join(',');
@@ -9353,6 +9851,43 @@ if('serviceWorker' in navigator){
         </div>
       </div>
 
+      <!-- Contact Plan -->
+      <div style="margin-bottom:10px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;">📋 Contact Plan</div>
+
+        <!-- Contact attempts -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">How many times should each voter be contacted?</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="dash-contact-attempts-chips">
+            <button class="dash-chip" data-focus-type="contactAttempts" data-focus-val="1" onclick="toggleFocusArea(this)">1×</button>
+            <button class="dash-chip" data-focus-type="contactAttempts" data-focus-val="2" onclick="toggleFocusArea(this)">2×</button>
+            <button class="dash-chip" data-focus-type="contactAttempts" data-focus-val="3" onclick="toggleFocusArea(this)">3×</button>
+            <button class="dash-chip" data-focus-type="contactAttempts" data-focus-val="4" onclick="toggleFocusArea(this)">4×</button>
+            <button class="dash-chip" data-focus-type="contactAttempts" data-focus-val="5" onclick="toggleFocusArea(this)">5×</button>
+          </div>
+        </div>
+
+        <!-- Contact methods -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Contact methods (select all that apply)</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="dash-chip dash-method-btn" data-method="door" onclick="toggleContactMethod(this)" style="display:flex;align-items:center;gap:5px;">🚪 Door-to-Door</button>
+            <button class="dash-chip dash-method-btn" data-method="phone" onclick="toggleContactMethod(this)" style="display:flex;align-items:center;gap:5px;">📞 Phone <span style="font-size:9px;color:var(--text-muted);margin-left:2px;">(coming soon)</span></button>
+            <button class="dash-chip dash-method-btn" data-method="mail" onclick="toggleContactMethod(this)" style="display:flex;align-items:center;gap:5px;">✉️ Mail</button>
+          </div>
+        </div>
+
+        <!-- Precinct targeting -->
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Target specific precincts? <span style="font-weight:400;">(leave all unselected for whole area)</span></div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button id="dash-prec-target-none" class="dash-chip active" onclick="setPrecinctTargetMode('none')" style="font-size:11px;">📍 All Precincts</button>
+            <button id="dash-prec-target-pick" class="dash-chip" onclick="setPrecinctTargetMode('pick')" style="font-size:11px;">🗺 Pick Precincts</button>
+          </div>
+          <div id="dash-prec-target-panel" style="display:none;max-height:200px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:5px;" id="dash-target-prec-chips"></div>
+        </div>
+      </div>
+
       <div style="margin-bottom:4px;">
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Canvass Message</div>
         <textarea id="dash-message" placeholder="Optional message for volunteers (shown on their wizard screen)…" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:10px 12px;border-radius:8px;outline:none;resize:vertical;min-height:60px;box-sizing:border-box;font-family:inherit;"></textarea>
@@ -9471,5 +10006,49 @@ if('serviceWorker' in navigator){
     </div>
   </div>
 </div>
+
+<!-- ── Next Stop Navigator ───────────────────────────────────────────────── -->
+<div id="nav-drawer" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:7500;background:var(--surface);border-top:2px solid var(--accent);border-radius:16px 16px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.5);max-width:600px;margin:0 auto;font-family:'IBM Plex Sans',sans-serif;">
+  <!-- Drag handle -->
+  <div style="display:flex;justify-content:center;padding:10px 0 4px;">
+    <div style="width:40px;height:4px;border-radius:2px;background:var(--border);"></div>
+  </div>
+  <!-- Progress bar -->
+  <div style="padding:0 16px 6px;display:flex;align-items:center;gap:10px;">
+    <div style="flex:1;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;">
+      <div id="nav-progress-bar" style="height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%;"></div>
+    </div>
+    <div id="nav-counter" style="font-size:12px;font-weight:700;color:var(--text-muted);white-space:nowrap;">Stop 1 of 1</div>
+  </div>
+  <!-- Stop info -->
+  <div style="padding:0 16px 12px;">
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+      <div style="flex:1;">
+        <div id="nav-names" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:2px;line-height:1.3;"></div>
+        <div id="nav-addr" style="font-size:13px;color:var(--text-muted);margin-bottom:6px;"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span id="nav-score-badge" style="font-size:11px;padding:2px 8px;border-radius:4px;font-weight:600;"></span>
+          <span id="nav-party-badge" style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--surface2);color:var(--text-muted);"></span>
+          <span id="nav-status-badge" style="font-size:11px;padding:2px 8px;border-radius:4px;"></span>
+        </div>
+      </div>
+      <!-- Distance indicator -->
+      <div id="nav-dist" style="text-align:center;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;min-width:52px;">
+        <div id="nav-dist-val" style="font-size:15px;font-weight:700;color:var(--accent);">—</div>
+        <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">feet</div>
+      </div>
+    </div>
+    <!-- Action buttons -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+      <button onclick="navPrev()" id="nav-prev-btn" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">← Prev</button>
+      <button onclick="navMarkDoor()" style="background:var(--accent);border:none;color:#fff;border-radius:10px;padding:11px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">✎ Door</button>
+      <button onclick="navNext()" id="nav-next-btn" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Next →</button>
+    </div>
+    <button onclick="navOpenMaps()" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;">
+      🗺 Navigate to This Stop
+    </button>
+  </div>
+</div>
+
 </body>
 </html>
