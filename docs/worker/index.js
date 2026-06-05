@@ -492,9 +492,12 @@ async function updateVoters(request, env) {
     if (!existing) continue;
     const record = JSON.parse(existing.data);
     // Apply updates
-    if (v.donations !== undefined) record.donations = v.donations;
-    if (v.party     !== undefined) record.party     = v.party;
-    if (v.score     !== undefined) record.score     = v.score;
+    if (v.donations  !== undefined) record.donations  = v.donations;
+    if (v.party      !== undefined) record.party      = v.party;
+    if (v.score      !== undefined) record.score      = v.score;
+    if (v.phone      !== undefined) record.phone      = v.phone;
+    if (v.email      !== undefined) record.email      = v.email;
+    if (v.smsOptIn   !== undefined) record.smsOptIn   = v.smsOptIn;
     // Update party column in DB too
     const newParty = v.party !== undefined ? v.party : record.party || '';
     await env.DB.prepare('UPDATE voters SET data = ?, party = ? WHERE id = ?')

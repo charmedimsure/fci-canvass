@@ -135,6 +135,27 @@ def build_vns(row):
         row['VOTER_STATUS'].strip(),
     ]
 
+# Maps residential city name → municipality value stored in D1
+_CITY_TO_MUNI = {
+    'LANCASTER':    'LANCASTER CITY',
+    'PICKERINGTON': 'PICKERINGTON CITY',
+    'COLUMBUS':     'COLUMBUS CITY',
+    'REYNOLDSBURG': 'REYNOLDSBURG CITY',
+    'BALTIMORE':    'BALTIMORE VILLAGE',
+    'BREMEN':       'BREMEN VILLAGE',
+    'LITHOPOLIS':   'LITHOPOLIS VILLAGE',
+    'CARROLL':      'CARROLL VILLAGE',
+    'RUSHVILLE':    'RUSHVILLE VILLAGE',
+}
+
+def _derive_municipality(r0):
+    """Derive municipality from residential city name."""
+    city = r0.get('RESIDENTIAL_CITY', '').strip().upper()
+    # Strip suffixes like ' OH' if present
+    city = city.replace(' OH', '').strip()
+    return _CITY_TO_MUNI.get(city, '')
+
+
 def build_household(addr_tuple, rows):
     addr, city, zip5 = addr_tuple
     r0  = rows[0]
@@ -168,6 +189,7 @@ def build_household(addr_tuple, rows):
         'mailOnly':     False,
         'lat':          None,
         'lon':          None,
+        'municipality': _derive_municipality(r0),
         'countyNum':    COUNTY_NUM,
         # True if any household member voted Nov 2023 (Issue 1/2) but skipped Nov 2022
         'issueVoter':   any(
