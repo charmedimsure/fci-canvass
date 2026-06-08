@@ -2367,13 +2367,8 @@ function _voterAPIParams(focusAreas){
 // Only removes adminExclude and voters with zero recent activity.
 function _baseVoterFilter(v){
   if(v.adminExclude) return false;
-  // Score is a number 0-10; 0 is valid ("unknown") so check with isFinite, not truthiness
-  if(Number.isFinite(v.score)) return true;
-  // Legacy years-string fallback
-  const yrs = (v.yearsVoted || v.yrs || v.voting || '');
-  if(!yrs) return true;
-  const recent = ['2024','2023','2022','2021','2020'];
-  return recent.some(y => yrs.indexOf(y) !== -1);
+  // Pass everything through — score and years checks removed temporarily for diagnosis
+  return true;
 }
 
 async function loadVotersFromAPI(focusAreas){
