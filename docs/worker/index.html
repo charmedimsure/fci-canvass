@@ -122,8 +122,6 @@ function doVoterLookup(){
     .then(function(res){
       if(btn){ btn.textContent='Search →'; btn.disabled=false; }
       var found=(res.voters||[]).filter(function(v){
-        if((v.party||'').toUpperCase()==='R') return false;
-        if(v.donations && v.donations.some(function(d){ return d.lean==='R'; })) return false;
         if(addr){ var a=(v.a||v.address||'').toUpperCase(); if(!a.includes(addr.toUpperCase())) return false; }
         return true;
       });
@@ -1406,12 +1404,12 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div id="step-generate" style="display:none;">
         <!-- Party filter -->
         <div id="door-party-filter" style="margin-bottom:14px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Party</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Party <span style="font-weight:400;font-size:10px;opacity:.7;">(tap to include/exclude)</span></div>
           <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            <button class="door-party-btn active" data-party="all" onclick="setDoorParty(this)" style="background:var(--accent);border:1.5px solid var(--accent);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">All</button>
-            <button class="door-party-btn" data-party="D" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔵 Dems</button>
-            <button class="door-party-btn" data-party="U" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⬜ Unaffiliated</button>
-            <button class="door-party-btn" data-party="R" onclick="setDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔴 Republicans</button>
+            <button class="door-party-btn" data-party="all" onclick="toggleDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">All</button>
+            <button class="door-party-btn active" data-party="D" onclick="toggleDoorParty(this)" style="background:var(--accent);border:1.5px solid var(--accent);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔵 Dems</button>
+            <button class="door-party-btn active" data-party="U" onclick="toggleDoorParty(this)" style="background:var(--accent);border:1.5px solid var(--accent);color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">⬜ Unaffiliated</button>
+            <button class="door-party-btn" data-party="R" onclick="toggleDoorParty(this)" style="background:var(--surface2);border:1.5px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">🔴 Republicans</button>
           </div>
         </div>
 
@@ -2277,10 +2275,8 @@ const FIELD_LOOKUP={"cong":{"0":"12TH CONGRESSIONAL"},"sen":{"0":"OHIO STATE SEN
 let ALL_VOTERS_RAW = [];   // populated by loadVotersFromAPI()
 
 function voterFromAPI(v){
-  // Immediately exclude R donors and registered Republicans at the source
-  // so they can never appear anywhere in the app
-  if((v.party||v.pty||'').toUpperCase() === 'R') return null;
-  if(v.donations && v.donations.some(d => d.lean === 'R')) return null;
+  // Do NOT exclude R voters here — party filtering happens downstream
+  // via _doorPartySet / _mailPartySet so the user can choose to include them
   // v comes from D1 — decode compressed field names to what the app expects
   // vns is stored as JSON string array of [firstName, lastName] pairs
   let vnsArr = [];
@@ -2366,22 +2362,23 @@ function _voterAPIParams(focusAreas){
   return params;
 }
 
+// Shared post-load voter filter — applied after voterFromAPI() at every load site.
+// Does NOT filter by party (that happens at render/cluster time via isPartyExcluded).
+// Only removes adminExclude and voters with zero recent activity.
+function _baseVoterFilter(v){
+  if(v.adminExclude) return false;
+  // Remove voters with no activity in last 5 years (2020-2024)
+  const yrs = (v.yearsVoted || v.yrs || v.voting || '');
+  const recent = ['2024','2023','2022','2021','2020'];
+  return recent.some(y => yrs.indexOf(y) !== -1);
+}
+
 async function loadVotersFromAPI(focusAreas){
   const params = _voterAPIParams(focusAreas);
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGet('/api/voters', params);
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
     hideLoadingOverlay();
     return ALL_VOTERS_RAW;
   } catch(e){
@@ -2622,17 +2619,7 @@ async function selectArea(btn){
       else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
       else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -3028,17 +3015,8 @@ function applyFilters(voterList){
     });
   }
 
-  // Apply party exclusion filter (user-controlled via party filter buttons)
-  // Always exclude hardcore R donors/registered R unless user explicitly includes them
-  const beforeExclusion = list.length;
-  list = list.filter(v => {
-    if(isPartyExcluded(v)) return false;
-    // If user hasn't explicitly chosen to include Republicans, still exclude hard-R
-    if(!_partyExcludes.has('D') && !_partyExcludes.has('U') && _partyExcludes.size === 0){
-      if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
-    }
-    return true;
-  });
+  // Apply party filter — always use isPartyExcluded which respects _doorPartySet
+  list = list.filter(v => !isPartyExcluded(v));
   if(list.length < voterList.length){
     setTimeout(()=>toast(`${list.length.toLocaleString()} voters match your selection`), 400);
   }
@@ -3362,10 +3340,11 @@ function adaptiveThreshold(pts){
   return Math.max(0.05, Math.min(0.25, median*2));
 }
 
-// Party filter state — door canvassing (include mode)
-let _doorPartyFilter = 'all'; // 'all' | 'D' | 'U' | 'R'
+// Party filter state — door canvassing (multi-select Set)
+// Default: D + U included, R excluded (the typical canvassing default)
+let _doorPartySet = new Set(['D','U']); // which parties to INCLUDE
 
-// Mail canvassing party filter
+// Mail canvassing party filter (single-select legacy, kept for mail flow)
 let _mailPartyFilter = 'all'; // 'all' | 'D' | 'U' | 'R'
 
 // Mail canvassing precinct filter
@@ -3378,16 +3357,39 @@ function mfToggleIssueFilter(cb){
   _mailIssueVotersOnly = cb.checked;
 }
 
-function setDoorParty(btn){
-  _doorPartyFilter = btn.dataset.party;
+function toggleDoorParty(btn){
+  const p = btn.dataset.party;
+  if(p === 'all'){
+    // "All" = include everyone (D, U, R)
+    _doorPartySet = new Set(['D','U','R']);
+  } else {
+    // Toggle this party in/out of the include set
+    if(_doorPartySet.has(p)){
+      if(_doorPartySet.size === 1){ toast('Select at least one party', true); return; }
+      _doorPartySet.delete(p);
+    } else {
+      _doorPartySet.add(p);
+    }
+  }
+  _syncDoorPartyUI();
+}
+
+function _syncDoorPartyUI(){
+  const allSelected = _doorPartySet.has('D') && _doorPartySet.has('U') && _doorPartySet.has('R');
   document.querySelectorAll('.door-party-btn').forEach(b => {
-    const active = b.dataset.party === _doorPartyFilter;
+    const p = b.dataset.party;
+    let active;
+    if(p === 'all') active = allSelected;
+    else            active = _doorPartySet.has(p);
     b.classList.toggle('active', active);
-    b.style.background   = active ? 'var(--accent)' : 'var(--surface2)';
-    b.style.borderColor  = active ? 'var(--accent)' : 'var(--border)';
-    b.style.color        = active ? '#fff'           : 'var(--text)';
+    b.style.background  = active ? 'var(--accent)' : 'var(--surface2)';
+    b.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+    b.style.color       = active ? '#fff'           : 'var(--text)';
   });
 }
+
+// Legacy alias — setDoorParty was used in a few inline onclick handlers above; remap to new logic
+function setDoorParty(btn){ toggleDoorParty(btn); }
 
 function mfPickParty(btn){
   _mailPartyFilter = btn.dataset.mailParty;
@@ -3416,15 +3418,16 @@ function buildMailPrecinctChips(){
 }
 
 function isPartyExcluded(v){
-  // Used by door canvassing cluster filter
-  if(_doorPartyFilter === 'all') return false;
+  // Returns true if this voter should be excluded by the current door party filter
   const p = (v.party || '').toUpperCase();
-  const isDem     = p === 'D';
-  const isRep     = p === 'R';
-  const isUnknown = !isDem && !isRep;
-  if(_doorPartyFilter === 'D' && !isDem) return true;
-  if(_doorPartyFilter === 'R' && !isRep) return true;
-  if(_doorPartyFilter === 'U' && !isUnknown) return true;
+  const isDem = p === 'D';
+  const isRep = p === 'R';
+  // Unaffiliated = anything that isn't D or R
+  const isUnaffiliated = !isDem && !isRep;
+
+  if(isDem)        return !_doorPartySet.has('D');
+  if(isRep)        return !_doorPartySet.has('R');
+  if(isUnaffiliated) return !_doorPartySet.has('U');
   return false;
 }
 
@@ -3611,7 +3614,8 @@ function clusterVoters(vl){
   // Also treat LOT address voters as mail-only (trailer park residents)
   const isLotAddr = v => /\bLOT\b/i.test(v.address || v.a || '');
   const mailOnlyList = vl.filter(v => v.mailOnly || isLotAddr(v));
-  vl = vl.filter(v => !isRepDonor(v) && !isRegisteredRep(v) && !isRepPrimaryOnly(v) && !v.mailOnly && !isLotAddr(v) && !isPartyExcluded(v));
+  // Party exclusion handled by isPartyExcluded() which respects _doorPartySet
+  vl = vl.filter(v => !v.mailOnly && !isLotAddr(v) && !isPartyExcluded(v));
 
   // Apply door-to-door score filter — include household if ANY member matches
   const scoreFiltered = vl.filter(v => {
@@ -4293,7 +4297,7 @@ async function doVoterLookup(){
     const res = await apiGet('/api/voters', params);
     const _addrFilter = (document.getElementById('vlookup-addr')||{value:''}).value.trim().toUpperCase();
     const found = (res.voters || []).map(voterFromAPI).filter(v => {
-      if(isRegisteredRep(v) || isRepDonor(v)) return false;
+      if(!v) return false;
       if(_addrFilter && !(v.address||'').toUpperCase().includes(_addrFilter)) return false;
       return true;
     });
@@ -4759,17 +4763,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGet('/api/voters', {});
-      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
       ALL_VOTERS_RAW = apiVoters;
       sheetVoters = ids.map(id =>
         voters.find(v => String(v.id) === id) ||
@@ -6254,8 +6248,9 @@ function applyMailFiltersToVoters(vlist){
       if(_mailPartyFilter === 'R' && !isRep) return false;
       if(_mailPartyFilter === 'U' && !isUnknown) return false;
     } else {
-      // Default: exclude registered Republicans unless party filter explicitly set to R
-      if(isRepDonor(v) || isRegisteredRep(v) || isRepPrimaryOnly(v)) return false;
+      // Default "All": exclude R — mail outreach default is Dem + Unaffiliated
+      // User must explicitly pick 🔴 Republicans to include them
+      if(isRegisteredRep(v)) return false;
     }
     return true;
   }).sort((a,b)=>{
@@ -6291,17 +6286,7 @@ async function runMailCanvass(){
         // Filter by district at DB level — fields now populated
       }
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -6618,6 +6603,9 @@ function pickMode(mode){
     b.style.color = sel ? '#fff' : 'var(--text)';
     b.classList.toggle('selected', sel);
   });
+  // Reset party filter to default (D + U)
+  _doorPartySet = new Set(['D','U']);
+  _syncDoorPartyUI();
   const warn = document.getElementById('door-unknown-warning');
   if(warn) warn.style.display = 'none';
   // Restore all hidden area buttons (will be re-filtered by applyVolunteerFocusToWizard if needed)
@@ -7064,17 +7052,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGet('/api/voters', _genParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -8889,31 +8867,11 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(v => {
-    if((v.party||'').toUpperCase() === 'R') return false;
-    if(v.adminExclude) return false;
-    if(isRepDonor(v)) return false;
-    // Remove voters with no activity in last 5 years (2020-2024)
-    var yrs = (v.yearsVoted || v.yrs || v.voting || '');
-    var recent = ['2024','2023','2022','2021','2020'];
-    var hasRecent = recent.some(function(y){ return yrs.indexOf(y) !== -1; });
-    if(!hasRecent) return false; // no recent voting history (includes no history at all)
-    return true;
-  });
+        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
       }
     } catch(e) {
       chipsEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted);">Could not load precincts: ${e.message}</div>`;
