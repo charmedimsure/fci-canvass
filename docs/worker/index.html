@@ -2307,6 +2307,7 @@ function voterFromAPI(v){
     voting:      v.voting      || v.yrs || '',
     lastPrimary: v.lastPrimary || v.lp  || '',
     specialsVoted: v.specialsVoted || v.sv || '',
+    precinctName: v.precinctName || v.precinct_name || v.precinct || v.pn || '',
     voters:      votersArr.length ? votersArr : (v.voters || []),
     // District fields already decoded by migration
     donations:    v.donations || [],
