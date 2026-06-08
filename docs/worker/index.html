@@ -9248,9 +9248,26 @@ if('serviceWorker' in navigator){
     loc.protocol !== 'blob:';
   if(isDeployed){
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('sw.js')
-        .then(r=>console.log('SW ready'))
-        .catch(e=>console.warn('SW failed:',e));
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+              const banner = document.createElement('div');
+              banner.innerHTML = '🔄 App update available — <strong>tap here to refresh</strong>';
+              banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a73e8;color:#fff;padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:99999;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);white-space:nowrap;';
+              banner.onclick = () => window.location.reload(true);
+              document.body.appendChild(banner);
+            }
+          });
+        });
+        reg.update();
+      }).catch(e=>console.warn('SW failed:',e));
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if(!refreshing){ refreshing = true; window.location.reload(true); }
+      });
     });
   }
 }
