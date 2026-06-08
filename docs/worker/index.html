@@ -2367,8 +2367,13 @@ function _voterAPIParams(focusAreas){
 // Only removes adminExclude and voters with zero recent activity.
 function _baseVoterFilter(v){
   if(v.adminExclude) return false;
-  // Remove voters with no activity in last 5 years (2020-2024)
+  // New voter file stores a numeric score (0-10) rather than a years string.
+  // If a score is present, the voter is active — pass them through.
+  if(v.score !== null && v.score !== undefined && v.score !== '') return true;
+  // Legacy: voter file stores election years as a comma-separated string.
+  // Keep only voters with activity in the last 5 years.
   const yrs = (v.yearsVoted || v.yrs || v.voting || '');
+  if(!yrs) return true; // no data either way — keep rather than silently drop
   const recent = ['2024','2023','2022','2021','2020'];
   return recent.some(y => yrs.indexOf(y) !== -1);
 }
