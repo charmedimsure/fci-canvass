@@ -1,61 +1,67 @@
-// FCI Canvass — Service Worker v4
-const CACHE = 'fci-canvass-20260521115324'; // auto-bumped on deploy
+// FCI FieldMap — Service Worker
+// Cache version: bump this string any time index.html is updated
+const CACHE_NAME = 'fci-fieldmap-v29';
 
-const APP_SHELL = [
+const PRECACHE = [
   './',
   './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png',
 ];
 
+// Install — pre-cache the app shell
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE)
-      .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE))
   );
+  self.skipWaiting();
 });
 
+// Activate — delete old caches
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      )
+    )
   );
+  self.clients.claim();
 });
 
+// Fetch — network-first for HTML, cache-first for everything else
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  const url = new URL(request.url);
 
-  // Always network-first for:
-  // - non-GET requests (POST, DELETE etc — never cache these)
-  // - external APIs and CDNs
-  if (event.request.method !== 'GET' ||
-      url.hostname.includes('tile.openstreetmap') ||
-      url.hostname.includes('nominatim') ||
-      url.hostname.includes('cdnjs') ||
-      url.hostname.includes('unpkg') ||
-      url.hostname.includes('workers.dev') ||
-      url.hostname.includes('cloudflare') ||
-      url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request));
+  // Never intercept API calls or cross-origin requests
+  if (!url.origin.includes(self.location.origin)) return;
+  if (url.pathname.startsWith('/api/')) return;
+
+  // Network-first for the main document so updates always land
+  if (request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname === '/') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
-  // Cache-first for app shell
+  // Cache-first for static assets (JS, CSS, images, fonts)
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    caches.match(request).then(cached => {
       if (cached) return cached;
-      return fetch(event.request).then(response => {
-        if (response.ok && url.origin === self.location.origin) {
-          caches.open(CACHE).then(c => c.put(event.request, response.clone()));
+      return fetch(request).then(response => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
         }
         return response;
-      }).catch(() => {
-        if (event.request.mode === 'navigate') return caches.match('./index.html');
       });
     })
   );
