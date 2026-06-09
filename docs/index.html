@@ -1187,6 +1187,11 @@ return{data:data,meta:{fields:hdrs}};}};</script>
               <span style="font-size:14px;font-weight:700;display:block;">Door to Door</span>
               <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:3px;">Generate walk routes by neighborhood</span>
             </button>
+            <button class="mode-btn" id="mode-phone" onclick="pickMode('phone')">
+              <span style="font-size:28px;display:block;margin-bottom:6px;">📞</span>
+              <span style="font-size:14px;font-weight:700;display:block;">Phone Bank</span>
+              <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:3px;">Call list for voters with phone numbers</span>
+            </button>
             <button class="mode-btn" id="mode-mail" onclick="pickMode('mail')">
               <span style="font-size:28px;display:block;margin-bottom:6px;">✉️</span>
               <span style="font-size:14px;font-weight:700;display:block;">By Mail</span>
@@ -1765,7 +1770,6 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <div class="mf-sub-panel" id="mf-precinct-panel">
         <div class="mf-label" style="margin-bottom:6px;">Select one or more precincts</div>
         <div id="mf-precinct-chips" class="mf-chip-group" style="flex-wrap:wrap;gap:6px;max-height:220px;overflow-y:auto;">
-          <div style="font-size:11px;color:var(--text-muted);font-style:italic;">Loading precincts…</div>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Leave all unselected to include all precincts</div>
       </div>
@@ -2604,12 +2608,13 @@ async function selectArea(btn){
   document.querySelectorAll('.race-btn,.nbhd-btn').forEach(b => b.classList.remove('selected'));
   if(_lockedRace){ canvassFor = _lockedRace; filterField = _lockedField; filterDistrict = _lockedDist; }
 
-  // If no voters loaded yet, fetch from API using the selected area
-  if(!ALL_VOTERS_RAW || !ALL_VOTERS_RAW.length){
+  // For door canvassing, always fetch area-specific voters fresh.
+  // (ALL_VOTERS_RAW may already be loaded from mail canvassing with district-wide data —
+  //  don't reuse that; fetch the scoped city/township set instead.)
+  if(canvassMode !== 'mail'){
     showLoadingOverlay('Loading voter data…');
     try {
       const fetchParams = {};
-      // Door-to-door always scoped to Fairfield County regardless of race selected
       fetchParams.county_num = '23';
       if(areaField === 'municipality') fetchParams.municipality = areaValue.toUpperCase();
       else if(areaField === 'st_house') fetchParams.st_house = areaValue;
@@ -5562,8 +5567,8 @@ function updateGenerateBtn(){
   const norm = s => (s||'').toLowerCase().replace(/\s*city$/,'').replace(/[^a-z0-9]/g,'');
 
   const hasArea  = canvassMode === 'mail' || !!document.querySelector('.area-btn.selected');
-  const hasNbhd  = canvassMode === 'mail' || !needsNeighborhood || !!neighborhoodPrec;
-  const hasRace  = !!canvassFor || canvassMode === 'litdrop' || canvassMode === 'mail';
+  const hasNbhd  = canvassMode === 'mail' || canvassMode === 'phone' || !needsNeighborhood || !!neighborhoodPrec;
+  const hasRace  = !!canvassFor || canvassMode === 'litdrop' || canvassMode === 'mail' || canvassMode === 'phone';
   const hasMode  = !!canvassMode;
   const ready    = hasMode && hasArea && hasNbhd && hasRace;
 
@@ -5572,6 +5577,7 @@ function updateGenerateBtn(){
   btn.style.cursor  = ready ? 'pointer' : 'not-allowed';
   if(canvassMode === 'mail') btn.textContent = 'Choose Filters →';
   else if(canvassMode === 'litdrop') btn.textContent = 'Generate Lit Drop Route →';
+  else if(canvassMode === 'phone') btn.textContent = 'Generate Call List →';
   else btn.textContent = 'Generate Routes →';
 
   if(!hasArea){
@@ -5585,6 +5591,13 @@ function updateGenerateBtn(){
   }
   if(canvassMode === 'mail' && hasRace){
     hint.textContent = canvassFor ? `Ready — canvassing for ${canvassFor}` : 'Ready to choose filters';
+    return;
+  }
+  if(canvassMode === 'phone'){
+    const phoneCount = ALL_VOTERS_RAW.filter(v => v.phone).length;
+    hint.textContent = hasArea
+      ? `${phoneCount.toLocaleString()} voters with phone numbers — ready to generate`
+      : 'Select an area above';
     return;
   }
 
@@ -6009,6 +6022,11 @@ function openMailFilter(){
 function mfTogglePanel(panel){
   const on = document.getElementById(`mf-${panel}-toggle`).checked;
   document.getElementById(`mf-${panel}-panel`).classList.toggle('show', on);
+  // Populate precinct chips on demand if not already done
+  if(panel === 'precinct' && on){
+    const chips = document.getElementById('mf-precinct-chips');
+    if(chips && !chips.querySelector('.mf-chip')) buildMailPrecinctChips();
+  }
 }
 
 function mfToggleDonorSort(chk){
@@ -6629,6 +6647,7 @@ function pickMode(mode){
   canvassMode = mode;
   document.getElementById('mode-door').classList.toggle('selected', mode === 'door');
   document.getElementById('mode-mail').classList.toggle('selected', mode === 'mail');
+  document.getElementById('mode-phone').classList.toggle('selected', mode === 'phone');
 
   if(mode === 'litdrop'){
     document.getElementById('body-mode').style.display = 'none';
@@ -6638,6 +6657,19 @@ function pickMode(mode){
     document.getElementById('generate-btn').textContent = 'Generate Lit Drop Route →';
     filterField = ''; filterDistrict = ''; canvassFor = 'Literature Drop';
     // Show and reset the area step
+    document.getElementById('step-area-wrapper').style.display = 'block';
+    wizOpen('step-area');
+    updateGenerateBtn();
+    return;
+  }
+
+  if(mode === 'phone'){
+    document.getElementById('body-mode').style.display = 'none';
+    document.getElementById('chip-mode').style.display = 'inline';
+    document.getElementById('chip-mode').textContent = '📞 Phone Bank';
+    document.getElementById('change-mode').style.display = 'inline';
+    document.getElementById('generate-btn').textContent = 'Generate Call List →';
+    // Show area step — same as door canvassing
     document.getElementById('step-area-wrapper').style.display = 'block';
     wizOpen('step-area');
     updateGenerateBtn();
@@ -7017,6 +7049,71 @@ function _openSimpleMailFilter(){
   document.getElementById('mail-filter-overlay').classList.add('open');
 }
 
+function scoreLabel(score){
+  // Convert numeric score (0-10) or existing string label to strong/leans/unknown
+  if(score === 'strong' || score === 'leans' || score === 'unknown') return score;
+  const n = Number(score);
+  if(Number.isFinite(n)){
+    if(n >= 7) return 'strong';
+    if(n >= 4) return 'leans';
+    return 'unknown';
+  }
+  return 'unknown';
+}
+
+function generateCallList(){
+  // Build call list from current area voters, filtered by party + score
+  let list = (_currentAreaVoters || ALL_VOTERS_RAW).slice();
+
+  // Party filter
+  list = list.filter(v => !isPartyExcluded(v));
+
+  // Score filter (reuse _doorScores)
+  list = list.filter(v => {
+    const lbl = scoreLabel(v.score);
+    return _doorScores.has(lbl);
+  });
+
+  // Phone numbers only
+  const withPhone = list.filter(v => v.phone);
+  const withoutPhone = list.filter(v => !v.phone);
+
+  if(!withPhone.length){
+    toast('No voters with phone numbers match your filters. Try adjusting party or score filters.', true);
+    return;
+  }
+
+  // Build call list overlay HTML
+  const rows = withPhone.map((v,i) => {
+    const name = v.name || v.n || 'Unknown';
+    const phone = v.phone || '';
+    const party = (v.party||'').toUpperCase();
+    const partyBadge = party === 'D' ? '<span style="color:#60a5fa;font-size:10px;">DEM</span>'
+                     : party === 'R' ? '<span style="color:#f87171;font-size:10px;">REP</span>'
+                     : '<span style="color:#9ca3af;font-size:10px;">UNK</span>';
+    const score = scoreLabel(v.score);
+    const scoreBadge = score === 'strong' ? '⭐' : score === 'leans' ? '〜' : '?';
+    const addr = v.address || v.a || '';
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:18px;font-weight:700;color:var(--text-muted);min-width:28px;">${i+1}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:14px;color:var(--text);">${name} ${partyBadge} ${scoreBadge}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${addr}</div>
+      </div>
+      <a href="tel:${phone.replace(/\D/g,'')}" style="background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;">📞 ${phone}</a>
+    </div>`;
+  }).join('');
+
+  const overlay = document.getElementById('call-list-overlay');
+  if(!overlay){ toast('Call list UI not found', true); return; }
+  document.getElementById('call-list-count').textContent = `${withPhone.length} voters with phone numbers`;
+  document.getElementById('call-list-nophones').textContent = withoutPhone.length
+    ? `${withoutPhone.length} additional voters have no phone on file`
+    : 'All filtered voters have a phone number';
+  document.getElementById('call-list-body').innerHTML = rows;
+  overlay.style.display = 'flex';
+}
+
 async function generateRoutes(){
   _litDropMode = (canvassMode === 'litdrop'); // auto-set for wizard lit-drop mode
   if(!canvassMode){ toast('Select Door to Door or By Mail first', true); return; }
@@ -7026,8 +7123,14 @@ async function generateRoutes(){
   if(needsNeighborhood && !neighborhoodPrec){
     toast('Select a neighborhood first', true); return;
   }
-  if(!canvassFor && canvassMode !== 'litdrop' && canvassMode !== 'mail'){ toast('Select a race first', true); return; }
+  if(!canvassFor && canvassMode !== 'litdrop' && canvassMode !== 'mail' && canvassMode !== 'phone'){ toast('Select a race first', true); return; }
   if(canvassMode === 'litdrop') canvassFor = canvassFor || 'Literature Drop';
+
+  // Phone bank mode — build call list
+  if(canvassMode === 'phone'){
+    generateCallList();
+    return;
+  }
 
   // Mail mode — open simplified filter
   if(canvassMode === 'mail'){
@@ -9271,6 +9374,21 @@ if('serviceWorker' in navigator){
 </script>
 
 <!-- VOTER LOOKUP OVERLAY -->
+<!-- CALL LIST OVERLAY -->
+<div id="call-list-overlay" style="display:none;position:fixed;inset:0;z-index:8000;background:var(--bg);flex-direction:column;overflow:hidden;">
+  <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+    <button onclick="document.getElementById('call-list-overlay').style.display='none'" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;">← Back</button>
+    <div style="flex:1;">
+      <div style="font-size:16px;font-weight:700;color:var(--text);">📞 Phone Bank Call List</div>
+      <div id="call-list-count" style="font-size:12px;color:var(--text-muted);margin-top:2px;"></div>
+    </div>
+  </div>
+  <div style="padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;">
+    <div id="call-list-nophones" style="font-size:12px;color:var(--text-muted);font-style:italic;"></div>
+  </div>
+  <div id="call-list-body" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px;"></div>
+</div>
+
 <div id="voter-lookup-overlay" style="display:none;position:fixed;inset:0;z-index:8500;background:rgba(0,0,0,.85);align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:100%;max-width:480px;padding:24px;margin-top:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
