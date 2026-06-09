@@ -2745,6 +2745,21 @@ function buildNeighborhoodStep(areaVoters){
     }
   });
   const sorted = Object.entries(precincts).sort((a,b) => a[0].localeCompare(b[0]));
+
+  // If all voters have no precinct data (all grouped as Unknown), skip the step
+  if(sorted.length === 0 || (sorted.length === 1 && sorted[0][0] === 'Unknown')){
+    needsNeighborhood = false;
+    wizHide('step-nbhd');
+    filterRaceButtons(areaVoters);
+    if((canvassFor && window._volAutoRace) || volunteerCampaignId){
+      wizHide('step-race');
+      wizShow('step-generate');
+    } else {
+      wizOpen('step-race');
+    }
+    updateGenerateBtn();
+    return;
+  }
   const body = document.getElementById('body-nbhd');
   if(!body) return;
   const totalVoters = areaVoters.length;
