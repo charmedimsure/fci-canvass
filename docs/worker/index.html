@@ -2644,12 +2644,10 @@ async function selectArea(btn){
       if(areaField === 'municipality'){
         const prec = (v.precinctName||'').toUpperCase();
         const cityWant = want.replace(/city$/,'').trim(); // e.g. 'lancaster'
-        // Only include voters whose precinct name starts with the city name
-        // e.g. Lancaster City precincts: 'LANCASTER CITY 1-A', 'LANCASTER CITY 2-B'
-        // Pickerington precincts: 'PICKERINGTON CITY A'
-        // This prevents rural mailing-address matches from leaking in
         const normPrec = prec.toLowerCase().replace(/[^a-z0-9]/g,' ').trim();
-        if(!normPrec.startsWith(cityWant)) return false;
+        // For phone mode, skip the precinct check — include all municipality matches
+        // (phone canvassing doesn't need geographic precision)
+        if(canvassMode !== 'phone' && normPrec && !normPrec.startsWith(cityWant)) return false;
       }
       return true;
     });
@@ -2659,6 +2657,14 @@ async function selectArea(btn){
 
   // Collapse area step
   wizCollapse('step-area', 'chip-area', areaLabel, 'change-area');
+
+  // Phone bank — skip neighborhood and race steps, go straight to generate
+  if(canvassMode === 'phone'){
+    wizHide('step-nbhd'); wizHide('step-race');
+    wizShow('step-generate');
+    updateGenerateBtn();
+    return;
+  }
 
   // Lit-drop and locked-race: skip race step entirely
   if(_isLitDrop || (_lockedRace && !needsNeighborhood)){
@@ -7062,24 +7068,21 @@ function scoreLabel(score){
 }
 
 function generateCallList(){
-  // Build call list from current area voters, filtered by party + score
+  // Build call list from current area voters — all parties, all scores
+  // Just filter to voters who have a phone number on file
   let list = (_currentAreaVoters || ALL_VOTERS_RAW).slice();
 
-  // Party filter
-  list = list.filter(v => !isPartyExcluded(v));
-
-  // Score filter (reuse _doorScores)
-  list = list.filter(v => {
-    const lbl = scoreLabel(v.score);
-    return _doorScores.has(lbl);
-  });
+  if(!list.length){
+    toast('No voters loaded. Select an area first.', true);
+    return;
+  }
 
   // Phone numbers only
   const withPhone = list.filter(v => v.phone);
   const withoutPhone = list.filter(v => !v.phone);
 
   if(!withPhone.length){
-    toast('No voters with phone numbers match your filters. Try adjusting party or score filters.', true);
+    toast('No voters in this area have phone numbers on file yet.', true);
     return;
   }
 
