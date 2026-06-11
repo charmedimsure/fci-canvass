@@ -2306,15 +2306,25 @@ function voterFromAPI(v){
   // Build voters array from vns: [{name:'First Last', ...}]
   const votersArr = vnsArr.map(function(pair){
     if(Array.isArray(pair)){
-      // vns format: [firstName, lastName, age?, bool?] OR [firstName, lastName]
-      // pair[0]=first, pair[1]=last, pair[2]=age (number), pair[3]=presOnly (bool)
-      var first = (pair[0] !== null && pair[0] !== undefined && typeof pair[0] === 'string') ? pair[0].trim() : '';
-      var last  = (pair[1] !== null && pair[1] !== undefined && typeof pair[1] === 'string') ? pair[1].trim() : '';
-      var name  = [first, last].filter(Boolean).join(' ');
-      return { name: name || '', age: pair[2] || null, presOnly: pair[3] || false };
+      // vns format: [firstName, lastName, middleName, suffix, dob, party, lastPrimary, voteCount, sosId, status]
+      var first  = (pair[0]||'').trim();
+      var last   = (pair[1]||'').trim();
+      var name   = [first, last].filter(Boolean).join(' ');
+      var dob    = (pair[4]||'').trim(); // DATE_OF_BIRTH e.g. "01/15/1952"
+      // Compute age from DOB
+      var age = null;
+      if(dob){
+        var parts = dob.split('/');
+        if(parts.length === 3){
+          var birthYear = parseInt(parts[2]);
+          if(!isNaN(birthYear)) age = new Date().getFullYear() - birthYear;
+        }
+      }
+      var voteCount = typeof pair[7] === 'number' ? pair[7] : null;
+      return { name: name||'', age: age, dob: dob, party: (pair[5]||''), lastPrimary: (pair[6]||''), voteCount: voteCount, sosId: (pair[8]||''), status: (pair[9]||'') };
     }
-    var s = String(pair || '').trim();
-    return { name: s || '' };
+    var s = String(pair||'').trim();
+    return { name: s||'' };
   }).filter(function(v){ return v.name && v.name.length > 0; });
 
   return {
@@ -2323,10 +2333,19 @@ function voterFromAPI(v){
     name:        v.name        || v.n   || '',
     address:     v.address     || v.a   || '',
     party:       v.party       || v.pty || '',
-    ages:        v.ages        || '',
-    yearsVoted:  v.yearsVoted  || v.yrs || v.voting || '',
+    // Build ages string from decoded vns array (e.g. "72, 68")
+    ages:        votersArr.length
+                   ? votersArr.map(p => p.age).filter(a => a != null).join(', ')
+                   : (v.ages || ''),
+    // Build yearsVoted from voteCount — show as "Voted in X of Y tracked elections"
+    yearsVoted:  v.yearsVoted  || v.yrs || '',
     voting:      v.voting      || v.yrs || '',
-    lastPrimary: v.lastPrimary || v.lp  || '',
+    voteCount:   votersArr.length
+                   ? Math.max(...votersArr.map(p => p.voteCount||0))
+                   : (v.voteCount || null),
+    lastPrimary: votersArr.length && votersArr[0].lastPrimary
+                   ? votersArr[0].lastPrimary
+                   : (v.lastPrimary || v.lp || ''),
     specialsVoted: v.specialsVoted || v.sv || '',
     precinctName: v.precinctName || v.precinct_name || v.precinct || v.pn || '',
     voters:      votersArr.length ? votersArr : (v.voters || []),
@@ -5044,7 +5063,18 @@ function openModal(id){
   contactInfoEl.textContent = contactParts.join('  ·  ');
   contactInfoEl.style.display = contactParts.length ? '' : 'none';
   document.getElementById('m-party').textContent=v.party==='D'?'Democrat':v.party==='R'?'Republican':v.party||'—';
-  document.getElementById('m-ages').textContent=v.ages ? v.ages.split(',').join(', ') : '—';
+  // Ages — show household members with ages
+  const _agesEl = document.getElementById('m-ages');
+  if(_agesEl){
+    const members = (v.voters && v.voters.length) ? v.voters : [];
+    if(members.length){
+      _agesEl.textContent = members.map(m => m.age ? `${m.name} (age ${m.age})` : m.name).filter(Boolean).join(', ') || '—';
+    } else if(v.ages){
+      _agesEl.textContent = v.ages.split(',').join(', ');
+    } else {
+      _agesEl.textContent = '—';
+    }
+  }
   const _precEl = document.getElementById('m-precinct');
   if(_precEl) _precEl.textContent = v.precinctName || v.precinct || '—';
   const _distEl = document.getElementById('m-districts');
@@ -5101,9 +5131,20 @@ function openModal(id){
     ccEl.style.display = 'none';
   }
 
-  document.getElementById('m-voting').textContent=v.yearsVoted
-    ? v.yearsVoted.split(',').join(', ')
-    : (v.voting ? v.voting+' generals' : '—');
+  const _votingEl = document.getElementById('m-voting');
+  if(_votingEl){
+    if(v.yearsVoted && v.yearsVoted.length > 2){
+      _votingEl.textContent = v.yearsVoted.split(',').join(', ');
+    } else if(v.voteCount != null){
+      const total = 20; // approximate total tracked elections
+      const pct = Math.round((v.voteCount / total) * 100);
+      _votingEl.textContent = `Voted in ${v.voteCount} of ~${total} tracked elections (${pct}%)`;
+    } else if(v.voting){
+      _votingEl.textContent = v.voting + ' generals';
+    } else {
+      _votingEl.textContent = '—';
+    }
+  }
   document.getElementById('m-notes').value=v.notes||'';
   document.getElementById('m-reason').value=v.contactReason||'';
   // Pre-select lit-drop reason if volunteer is in lit-drop mode and door hasn't been contacted

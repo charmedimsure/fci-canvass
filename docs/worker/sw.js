@@ -1,6 +1,6 @@
 // FCI FieldMap — Service Worker
 // Cache version: bump this string any time index.html is updated
-const CACHE_NAME = 'fci-fieldmap-v37';
+const CACHE_NAME = 'fci-fieldmap-v38';
 
 const PRECACHE = [
   './',
