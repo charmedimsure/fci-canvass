@@ -2314,9 +2314,9 @@ function voterFromAPI(v){
       // Compute age from DOB
       var age = null;
       if(dob){
-        var parts = dob.split('/');
+        var parts = dob.split('-');
         if(parts.length === 3){
-          var birthYear = parseInt(parts[2]);
+          var birthYear = parseInt(parts[0]);
           if(!isNaN(birthYear)) age = new Date().getFullYear() - birthYear;
         }
       }
