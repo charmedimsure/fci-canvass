@@ -1500,6 +1500,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
       <button class="export-btn btn-mail" id="print-all-labels" style="gap:6px">🖨 Full Mailer Labels</button>
       <button class="export-btn btn-yard" id="exp-yard">↓ Yard Signs</button>
       <button class="export-btn" id="exp-allies" style="background:var(--accent-bg);border-color:var(--accent);color:var(--accent)">↓ New Allies</button>
+      <button class="export-btn" id="exp-contacts-csv" onclick="exportContactsCSV()" style="background:#14532d;border-color:#22c55e;color:#22c55e">📊 Export Contacts</button>
       <button class="export-btn" id="exp-report" style="background:#1a2a1a;border-color:#4ade80;color:#4ade80">📋 Outing Report</button>
       <div class="export-spacer"></div>
       <button class="reset-btn" id="reset-btn">← Change Race</button>
@@ -6878,6 +6879,7 @@ function showFocusedRoute(idx){
       <button onclick="openScanOverlay()" style="background:var(--fci-navy);border:1px solid var(--fci-sky);color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">📷 Scan Sheet</button>
       <button onclick="openMapsChoice()" style="background:#1a73e8;border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">🗺 Maps Route</button>
       <button onclick="navOpen(selectedRoute)" style="background:var(--accent);border:none;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;">▶ Start Navigator</button>
+      ${_litDropMode ? `<button onclick="completeLitDropRoute(${idx})" style="background:#14532d;border:1px solid #22c55e;color:#22c55e;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;" id="litdrop-complete-btn-${idx}">📰 Mark Route Done</button>` : ''}
       <button class="fro-back" onclick="exitFocusedRoute();navClose();">← All Routes</button>
     </div>`;
 
@@ -9452,8 +9454,179 @@ if('serviceWorker' in navigator){
 }
 
 // ══════════════════════════════════════════════════════════════════
-// HD-73 TIER SYSTEM — Precinct messaging tiers for Wood4Ohio
+// CSV / GOOGLE SHEETS EXPORT
 // ══════════════════════════════════════════════════════════════════
+
+function exportCSV(rows, filename){
+  if(!rows || !rows.length){ toast('No data to export', true); return; }
+  const headers = ['Name','Address','City','Party','Score','Contact Status','Contact Reason','Notes','Yard Sign','Phone','Precinct','Ward'];
+  const lines = [headers.join(',')];
+  rows.forEach(v => {
+    const name    = v.name || v.n || '';
+    const addr    = (v.address || v.a || '').replace(/,/g,' ');
+    const city    = (v.municipality || v.city || '').replace(/,/g,' ');
+    const party   = (v.party || '').toUpperCase();
+    const score   = scoreLabel(v.score);
+    const status  = v.contactStatus || 'pending';
+    const reason  = (v.contactReason || '').replace(/,/g,' ').replace(/"/g,'""');
+    const notes   = (v.notes || '').replace(/,/g,' ').replace(/"/g,'""');
+    const yard    = v.yardSign ? 'YES' : '';
+    const phone   = v.phone || '';
+    const prec    = (v.precinctName || v.precinct || '').replace(/,/g,' ');
+    const ward    = prec.match(/\d+/)?.[0] || '';
+    lines.push([name, addr, city, party, score, status, `"${reason}"`, `"${notes}"`, yard, phone, prec, ward].join(','));
+  });
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename || 'export.csv';
+  a.click();
+  toast(`✓ Exported ${rows.length} rows as ${filename}`);
+}
+
+function exportContactsCSV(){
+  // Export all voters that have been contacted (any status other than pending)
+  const all = [...(voters||[]), ...(mailList||[])];
+  const contacted = all.filter(v => v.contactStatus && v.contactStatus !== 'pending');
+  if(!contacted.length){
+    // If nothing contacted yet, export everything
+    const everything = all.length ? all : (ALL_VOTERS_RAW||[]);
+    if(!everything.length){ toast('No voter data loaded', true); return; }
+    if(!confirm(`No contacts recorded yet. Export all ${everything.length.toLocaleString()} loaded voters?`)) return;
+    exportCSV(everything, `all_voters_${new Date().toISOString().slice(0,10)}.csv`);
+    return;
+  }
+  exportCSV(contacted, `contacts_${new Date().toISOString().slice(0,10)}.csv`);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// LIT DROP — Street coverage tracking
+// ══════════════════════════════════════════════════════════════════
+
+// Track which streets have had lit dropped
+const _litDropCoveredStreets = new Set();
+const _litDropCoveredClusters = new Set();
+
+function _getStreetName(address){
+  if(!address) return null;
+  // Extract street name from "123 MAIN ST, LANCASTER OH 43130"
+  const m = (address||'').match(/^\d+\s+(.+?)(?:,|\s+\d{5}|$)/);
+  if(!m) return null;
+  return m[1].trim().toUpperCase()
+    .replace(/\b(AVE|AVENUE|ST|STREET|DR|DRIVE|RD|ROAD|LN|LANE|CT|COURT|BLVD|BOULEVARD|WAY|PL|PLACE|CIR|CIRCLE|PKWY|PARKWAY|HWY|HIGHWAY)\b\.?/g, '')
+    .trim();
+}
+
+function markLitDropStreet(address){
+  const street = _getStreetName(address);
+  if(street) _litDropCoveredStreets.add(street);
+}
+
+function markLitDropCluster(clusterIdx){
+  _litDropCoveredClusters.add(clusterIdx);
+  // Mark all streets in this cluster
+  const cl = walkClusters[clusterIdx];
+  if(cl) cl.forEach(v => markLitDropStreet(v.address || v.a));
+}
+
+function isStreetLitDropped(address){
+  const street = _getStreetName(address);
+  return street ? _litDropCoveredStreets.has(street) : false;
+}
+
+function getLitDropProgress(){
+  const total = walkClusters ? walkClusters.length : 0;
+  const done  = _litDropCoveredClusters.size;
+  return { total, done, pct: total ? Math.round((done/total)*100) : 0 };
+}
+
+function showLitDropProgressBanner(){
+  let banner = document.getElementById('litdrop-progress-banner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'litdrop-progress-banner';
+    banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#1e3a2f;border:1px solid #22c55e;color:#22c55e;padding:8px 16px;border-radius:20px;font-size:12px;font-weight:700;z-index:5000;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.4);pointer-events:none;';
+    document.body.appendChild(banner);
+  }
+  const {done, total, pct} = getLitDropProgress();
+  banner.textContent = `📰 Lit Drop: ${done} of ${total} routes covered (${pct}%)`;
+  banner.style.display = 'block';
+  clearTimeout(banner._hideTimer);
+  banner._hideTimer = setTimeout(() => banner.style.display='none', 4000);
+}
+
+function exportLitDropReport(){
+  const {done, total, pct} = getLitDropProgress();
+  const lines = [
+    `LIT DROP COVERAGE REPORT`,
+    `Generated: ${new Date().toLocaleString()}`,
+    `Routes covered: ${done} of ${total} (${pct}%)`,
+    ``,
+    `COVERED STREETS:`,
+    ...[..._litDropCoveredStreets].sort().map(s => `  ✓ ${s}`),
+    ``,
+    `UNCOVERED ROUTES:`,
+    ...(walkClusters||[])
+      .filter((_,i) => !_litDropCoveredClusters.has(i))
+      .map((cl,i) => `  ✗ Route ${i+1}: ${cl[0]?.address?.split(',')[0]||'Unknown'} area (${cl.length} households)`)
+  ];
+  const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `litdrop_report_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+}
+
+function completeLitDropRoute(idx){
+  markLitDropCluster(idx);
+  // Mark all voters in cluster as lit-dropped
+  const cl = walkClusters[idx];
+  if(cl){
+    cl.forEach(v => {
+      if(!v.contactStatus || v.contactStatus === 'pending'){
+        v.contactStatus = 'not_contacted';
+        v.contactReason = 'Not home — lit drop left';
+      }
+    });
+    saveContactState();
+    updateStats();
+    renderWalk();
+  }
+  // Update button
+  const btn = document.getElementById(`litdrop-complete-btn-${idx}`);
+  if(btn){
+    btn.textContent = '✓ Done';
+    btn.style.background = '#22c55e';
+    btn.style.color = '#fff';
+    btn.disabled = true;
+  }
+  showLitDropProgressBanner();
+  const {done, total} = getLitDropProgress();
+  toast(`📰 Route ${idx+1} marked done · ${done}/${total} routes covered`);
+}
+
+// Add lit drop export to toolbar when in lit drop mode
+function _updateLitDropToolbar(){
+  if(!_litDropMode) return;
+  const toolbar = document.querySelector('.export-bar') || document.querySelector('[id="exp-walk"]')?.parentElement;
+  if(!toolbar) return;
+  if(document.getElementById('exp-litdrop-report')) return;
+  const btn = document.createElement('button');
+  btn.id = 'exp-litdrop-report';
+  btn.className = 'export-btn';
+  btn.style.cssText = 'background:#14532d;border-color:#22c55e;color:#22c55e';
+  btn.textContent = '📰 Lit Drop Report';
+  btn.onclick = exportLitDropReport;
+  toolbar.insertBefore(btn, toolbar.lastElementChild);
+}
+
+// Hook into confirmDoorType to show toolbar button
+const _origConfirmDoorType2 = confirmDoorType;
+window.confirmDoorType = function(type){
+  _origConfirmDoorType2(type);
+  if(type === 'litdrop') setTimeout(_updateLitDropToolbar, 500);
+};
+
 
 const HD73_TIERS = {
   'COLUMBUS CITY A':1,'COLUMBUS CITY B':1,'COLUMBUS CITY C':1,
