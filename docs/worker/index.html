@@ -2333,6 +2333,9 @@ function voterFromAPI(v){
     // Decode compressed field names
     name:        v.name        || v.n   || '',
     address:     v.address     || v.a   || '',
+    city:        v.city        || '',
+    state:       v.state       || 'OH',
+    zip:         v.zip         || v.zip5 || '',
     party:       v.party       || v.pty || '',
     // Build ages string from decoded vns array (e.g. "72, 68")
     ages:        votersArr.length
@@ -2418,7 +2421,12 @@ async function loadVotersFromAPI(focusAreas){
   showLoadingOverlay('Loading voter data…');
   try {
     const result = await apiGetAllVoters(params, n => showLoadingOverlay(`Loading voter data… ${n.toLocaleString()} loaded`));
-    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+    const seen = new Set();
+    ALL_VOTERS_RAW = result.voters.map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter(v => {
+      if(seen.has(v.id)) return false;
+      seen.add(v.id);
+      return true;
+    });
     hideLoadingOverlay();
     return ALL_VOTERS_RAW;
   } catch(e){
@@ -2660,7 +2668,7 @@ async function selectArea(btn){
       else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
       else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
     } catch(e) {
       toast('⚠️ Could not load voter data: ' + e.message, true);
     } finally {
@@ -4831,7 +4839,7 @@ async function _handleScannedWalkSheet(qrData) {
       const missing = ids.filter(id => !sheetVoters.find(v => String(v.id) === id));
       // Fetch all voters and match by id
       const r = await apiGetAllVoters({}, n => showLoadingOverlay(`Loading voter data… ${n.toLocaleString()} loaded`));
-      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+      const apiVoters = (r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
       ALL_VOTERS_RAW = apiVoters;
       sheetVoters = ids.map(id =>
         voters.find(v => String(v.id) === id) ||
@@ -5046,7 +5054,9 @@ function openModal(id){
   const v=voters.find(x=>String(x.id)===String(id)); if(!v)return;
   mId=id; mScore=v.score; mContact=v.contactStatus; mYard=v.yardSign; mOppYard=v.oppYard||false;
   document.getElementById('m-name').textContent=v.name;
-  document.getElementById('m-addr').textContent=v.address;
+  const _addrCity = [v.city || v.municipality || '', v.state || 'OH', v.zip || v.zip5 || ''].filter(Boolean).join(' ');
+  const _addrFull = _addrCity ? (v.address || v.a || '') + ', ' + _addrCity.replace(/\s+CITY$/i,'') : (v.address || v.a || '');
+  document.getElementById('m-addr').textContent = _addrFull || '—';
   // Show phone/email if available
   let contactInfoEl = document.getElementById('m-contact-info');
   if(!contactInfoEl){
@@ -5135,15 +5145,21 @@ function openModal(id){
   const _votingEl = document.getElementById('m-voting');
   if(_votingEl){
     if(v.yearsVoted && v.yearsVoted.length > 2){
-      _votingEl.textContent = v.yearsVoted.split(',').join(', ');
-    } else if(v.voteCount != null){
-      const total = 20; // approximate total tracked elections
-      const pct = Math.round((v.voteCount / total) * 100);
-      _votingEl.textContent = `Voted in ${v.voteCount} of ~${total} tracked elections (${pct}%)`;
-    } else if(v.voting){
-      _votingEl.textContent = v.voting + ' generals';
+      _votingEl.textContent = v.yearsVoted.split(',').map(s=>s.trim()).join(', ');
     } else {
-      _votingEl.textContent = '—';
+      // Use per-member vote counts from vns array
+      const members = v.voters && v.voters.length ? v.voters : [];
+      const totalElections = 14; // total tracked elections in scoring model
+      if(members.length > 0 && members.some(m => m.voteCount != null)){
+        const lines = members
+          .filter(m => m.name && m.voteCount != null)
+          .map(m => `${m.name}: voted in ${m.voteCount} of ${totalElections} tracked elections`);
+        _votingEl.textContent = lines.length ? lines.join(' · ') : '—';
+      } else if(v.voteCount != null){
+        _votingEl.textContent = `Voted in ${v.voteCount} of ${totalElections} tracked elections`;
+      } else {
+        _votingEl.textContent = '—';
+      }
     }
   }
   document.getElementById('m-notes').value=v.notes||'';
@@ -5771,15 +5787,26 @@ function showMailLabelsOverlay(voterList){
     // Use mailing address for labels if available (e.g. trailer parks, PO Boxes)
     const _addr = v.mailAddr || v.address || v.a || '';
     const _name = v.name || v.n || '';
-    const addrParts = _addr.split(',').map(s => s.trim());
-    let line1 = _addr, line2 = '';
-    if(addrParts.length >= 3){ line1 = addrParts[0]; line2 = addrParts.slice(1).join(', '); }
-    else if(addrParts.length === 2){ line1 = addrParts[0]; line2 = addrParts[1]; }
-    // Add OH state abbreviation if not already present
-    if(line2 && !/\bOH\b/.test(line2)){
-      // Insert OH before zip: "LANCASTER 43130" → "LANCASTER OH 43130"
-      line2 = line2.replace(/(\b\d{5}\b)/, 'OH $1').replace(/^OH /, '');
-      if(!/\bOH\b/.test(line2)) line2 += ', OH';
+    // city, state, zip are stored as separate fields in D1
+    const _city  = v.city  || v.municipality || '';
+    const _state = v.state || 'OH';
+    const _zip   = v.zip   || v.zip5 || '';
+    // Build line1 = street address, line2 = city, state zip
+    let line1 = _addr.split(',')[0].trim(); // strip any existing city/state if concatenated
+    let line2 = '';
+    if(_city || _zip){
+      // Clean up city — remove " CITY" suffix for labels (e.g. "LANCASTER CITY" → "LANCASTER")
+      const cityClean = _city.replace(/\s+CITY$/i,'').replace(/\s+VILLAGE$/i,'').replace(/\s+TWP$/i,'').trim();
+      line2 = [cityClean, _state, _zip].filter(Boolean).join(' ');
+    } else {
+      // Fallback: try to split concatenated address string on comma
+      const addrParts = _addr.split(',').map(s => s.trim());
+      if(addrParts.length >= 2){ line1 = addrParts[0]; line2 = addrParts.slice(1).join(', '); }
+      // Add OH if not present
+      if(line2 && !/\bOH\b/.test(line2)){
+        line2 = line2.replace(/(\b\d{5}\b)/, 'OH $1').replace(/^OH /, '');
+        if(!/\bOH\b/.test(line2)) line2 += ' OH';
+      }
     }
 
     if(_mqMailMode === 'household'){
@@ -6389,7 +6416,7 @@ async function runMailCanvass(){
         // Filter by district at DB level — fields now populated
       }
       const _r = await apiGetAllVoters(fetchParams, n => showLoadingOverlay(`Loading voter data… ${n.toLocaleString()} loaded`));
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -7238,7 +7265,7 @@ async function generateRoutes(){
     showLoadingOverlay('Loading voter data…');
     try {
       const _r = await apiGetAllVoters(_genParams, n => showLoadingOverlay(`Loading voter data… ${n.toLocaleString()} loaded`));
-      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+      ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
     } catch(e) {
       hideLoadingOverlay();
       toast('⚠️ Could not load voter data: ' + e.message, true);
@@ -9053,11 +9080,11 @@ async function buildPrecintChips(cityVal){
       // Find the D1 municipality value that matches cityVal
       // Stored values include "CITY" suffix e.g. "LANCASTER CITY"
       const result = await apiGet('/api/voters', { municipality: cityVal.toUpperCase() + ' CITY', limit: 5000 });
-      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+      pool = (result.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
       // Also try without CITY suffix in case it's stored differently
       if(!pool.length){
         const result2 = await apiGet('/api/voters', { municipality: cityVal.toUpperCase(), limit: 5000 });
-        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter);
+        pool = (result2.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
       }
     } catch(e) {
       chipsEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted);">Could not load precincts: ${e.message}</div>`;
