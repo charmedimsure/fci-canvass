@@ -56,13 +56,15 @@ ALL_SCORED = RECENT_GENERALS + MID_GENERALS + RECENT_PRIMARIES
 PARTY_MAP = {'D':'D','R':'R','L':'L','G':'G','N':'N','':''}
 
 
-def make_id(addr, city, zip5):
-    key = f"{addr.upper()}|{city.upper()}|{zip5}".encode()
+def make_id(addr, sec, city, zip5):
+    key = f"{addr.upper()}|{sec.upper()}|{city.upper()}|{zip5}".encode()
     return hashlib.md5(key).hexdigest()[:16]
 
 def address_key(row):
+    sec = row.get('RESIDENTIAL_SECONDARY_ADDR', '').strip().upper()
     return (
         row['RESIDENTIAL_ADDRESS1'].strip().upper(),
+        sec,  # APT 205, UNIT 3, etc. — empty string for single-family homes
         row['RESIDENTIAL_CITY'].strip().upper(),
         row['RESIDENTIAL_ZIP'].strip()[:5],
     )
@@ -157,7 +159,7 @@ def _derive_municipality(r0):
 
 
 def build_household(addr_tuple, rows):
-    addr, city, zip5 = addr_tuple
+    addr, sec, city, zip5 = addr_tuple
     r0  = rows[0]
     sec = r0['RESIDENTIAL_SECONDARY_ADDR'].strip()
     full_addr = f"{r0['RESIDENTIAL_ADDRESS1'].strip()} {sec}".strip() if sec else r0['RESIDENTIAL_ADDRESS1'].strip()
@@ -169,7 +171,7 @@ def build_household(addr_tuple, rows):
     hh_party = max(pc, key=pc.get) if pc else ''
 
     return {
-        'id':           make_id(r0['RESIDENTIAL_ADDRESS1'].strip(), city, zip5),
+        'id':           make_id(r0['RESIDENTIAL_ADDRESS1'].strip(), r0.get('RESIDENTIAL_SECONDARY_ADDR','').strip(), city, zip5),
         'a':            full_addr,
         'city':         r0['RESIDENTIAL_CITY'].strip(),
         'state':        r0['RESIDENTIAL_STATE'].strip(),
