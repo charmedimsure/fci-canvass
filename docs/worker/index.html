@@ -459,7 +459,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
   .dot-not_contacted { background:var(--danger); }
   .voter-info { flex:1; min-width:0; }
   .voter-name { font-size:13px; font-weight:500; margin-bottom:2px; }
-  .voter-addr { font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .voter-addr { font-size:11px; color:var(--text-muted); white-space:normal; overflow:visible; }
   .voter-note { font-size:10px; color:var(--text-muted); margin-top:2px; font-style:italic; }
   .voter-right { display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .score-badge { font-family:'IBM Plex Mono','Courier New',Courier,monospace; font-size:10px; font-weight:600; padding:2px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:.5px; border:1px solid; }
@@ -3819,7 +3819,7 @@ function vRowHTML(v){
     <div class="contact-dot ${dotCls}"></div>
     <div class="voter-info">
       <div class="voter-name">${v.yardSign?'🪧 ':v.oppYard?'✗ ':''}${v.name}${donorBadge}</div>
-      <div class="voter-addr">${v.address}</div>
+      <div class="voter-addr">${v.address}${(v.city||v.zip) ? ", " + [(v.city||"").replace(/\s+CITY$/i,"").trim(), v.state||"OH", v.zip||v.zip5||""].filter(Boolean).join(" ") : ""}</div>
       ${hint?`<div class="voter-note">${hint}`+`</div>`:''}
       ${spokeLine}
     </div>
