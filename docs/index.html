@@ -2644,9 +2644,9 @@ async function selectArea(btn){
   areaLabel = btn.dataset.areaLabel  || 'All of Fairfield County';
   neighborhoodPrec = '';
   // Preserve race if a volunteer campaign already locked it
-  const _lockedRace  = window._volAutoRace ? canvassFor     : '';
-  const _lockedField = window._volAutoRace ? filterField     : '';
-  const _lockedDist  = window._volAutoRace ? filterDistrict  : '';
+  const _ar = window._volAutoRace; const _lockedRace  = _ar ? (_ar.race || canvassFor) : canvassFor;
+  const _lockedField = _ar ? (_ar.field || filterField) : filterField;
+  const _lockedDist  = _ar ? (String(_ar.value) || filterDistrict) : filterDistrict;
   // Preserve lit-drop mode canvassFor
   const _isLitDrop = canvassMode === 'litdrop';
   if(!_isLitDrop){ canvassFor = ''; filterField = ''; filterDistrict = ''; }
