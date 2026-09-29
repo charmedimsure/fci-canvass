@@ -3006,8 +3006,7 @@ function applyFilters(voterList){
   let list = voterList;
 
   // Area filter (city / township / village)
-  // Skip if voters are already scoped to a precinct (_currentAreaVoters)
-  if(areaField && areaValue && !neighborhoodPrec){
+  if(areaField && areaValue){
     const want = norm(areaValue);
     list = list.filter(v => {
       const val = norm(v[areaField] || '');
@@ -5660,6 +5659,7 @@ ${withNotes.length ? `<div class="section">
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+document.getElementById('exp-walk').addEventListener('click',()=>openWalkSheetPrint());
 document.getElementById('exp-yard').addEventListener('click',()=>exportCSV(voters.filter(v=>v.yardSign),'yard_signs.csv'));
 
 // ── FILE HANDLING — voter data is embedded, no upload needed ──────────
