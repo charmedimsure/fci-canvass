@@ -1255,7 +1255,7 @@ return{data:data,meta:{fields:hdrs}};}};</script>
             <button class="area-btn" data-area-field="municipality" data-area-value="Lancaster City" data-area-label="Lancaster">Lancaster</button>
             <button class="area-btn" data-area-field="municipality" data-area-value="Pickerington City" data-area-label="Pickerington">Pickerington</button>
             <button class="area-btn" data-area-field="village" data-area-value="Canal Winchester" data-area-label="Canal Winchester">Canal Winchester</button>
-            <button class="area-btn" data-area-field="precinct_name" data-area-value="COLUMBUS CITY" data-area-label="Columbus (Fairfield Co.)">Columbus portion</button>
+            <button class="area-btn" data-area-field="municipality" data-area-value="Columbus City" data-area-label="Columbus (Fairfield Co.)">Columbus portion</button>
             <button class="area-btn" data-area-field="municipality" data-area-value="Reynoldsburg City" data-area-label="Reynoldsburg">Reynoldsburg</button>
           </div>
           <div class="area-group-label">Villages</div>
@@ -2667,7 +2667,6 @@ async function selectArea(btn){
       else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
       else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
       else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-      else if(areaField === 'precinct_name') fetchParams.precinct_name = areaValue.toUpperCase();
       const _r = await apiGet('/api/voters', fetchParams);
       ALL_VOTERS_RAW = (_r.voters || []).map(voterFromAPI).filter(Boolean).map(applyVoterEditsToVoter).filter(_baseVoterFilter).filter((v,i,a) => a.findIndex(x=>x.id===v.id)===i);
     } catch(e) {
@@ -2683,8 +2682,7 @@ async function selectArea(btn){
   if(areaField && areaValue){
     const want = norm(areaValue);
     areaVoters = ALL_VOTERS_RAW.filter(v => {
-      const _fieldVal = areaField === 'precinct_name' ? (v.precinctName||v.precinct||'') : (v[areaField]||'');
-      const val = norm(_fieldVal);
+      const val = norm(v[areaField]||'');
       if(!val || !(val===want||val.includes(want)||want.includes(val))) return false;
       // For municipality filter: exclude voters whose precinct belongs to a different township
       // (e.g. Rock Mill Rd has Lancaster mailing address but is Amanda Township)
@@ -3008,7 +3006,8 @@ function applyFilters(voterList){
   let list = voterList;
 
   // Area filter (city / township / village)
-  if(areaField && areaValue){
+  // Skip if voters are already scoped to a precinct (_currentAreaVoters)
+  if(areaField && areaValue && !neighborhoodPrec){
     const want = norm(areaValue);
     list = list.filter(v => {
       const val = norm(v[areaField] || '');
@@ -6415,7 +6414,6 @@ async function runMailCanvass(){
         else if(areaField === 'cong_dist') fetchParams.cong_dist = areaValue;
         else if(areaField === 'township') fetchParams.township = areaValue.toUpperCase();
         else if(areaField === 'village') fetchParams.village = areaValue.toUpperCase();
-      else if(areaField === 'precinct_name') fetchParams.precinct_name = areaValue.toUpperCase();
         // Filter by district at DB level — fields now populated
       }
       const _r = await apiGetAllVoters(fetchParams, n => showLoadingOverlay(`Loading voter data… ${n.toLocaleString()} loaded`));
