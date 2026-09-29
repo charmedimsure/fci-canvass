@@ -3706,9 +3706,9 @@ function clusterVoters(vl){
     });
   });
 
-  const valid   = scoreFiltered.filter(v => v.lat && v.lon);
-  const noCoord = scoreFiltered.filter(v => !v.lat || !v.lon);
-  if(!valid.length) return {walk:[], mail:[...noCoord, ...mailOnlyList], thresh:0.12};
+  const valid = scoreFiltered; // geocoding removed
+  const noCoord = [];
+  
 
   // Nearest-neighbor greedy clustering into routes of ROUTE_TARGET
   // Build routes by repeatedly finding the closest unassigned voter
@@ -7342,9 +7342,7 @@ async function generateRoutes(){
   } else {
     setTimeout(showRoutePicker, 400);
   }
-  if(noCoords > voters.length * 0.4){
-    setTimeout(()=>toast(`⚠️ ${noCoords} addresses couldn't be geocoded — they're in the mail list.`, true), 900);
-  }
+
 }
 
 function changeRace(){
